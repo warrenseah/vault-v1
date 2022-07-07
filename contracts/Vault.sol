@@ -6,6 +6,7 @@ import './IERC20.sol';
 
 contract Vault is Ownable {
     uint public duration = 1 minutes;
+    uint8 public fee = 5;
 
     // Vault shares
     uint public totalSupply;
@@ -35,6 +36,14 @@ contract Vault is Ownable {
         return address(this).balance;
     }
 
+    function changeFee(uint8 _fee) external onlyOwner {
+        fee = _fee;
+    }
+
+    function amtWithFee(uint _deposit) public view returns (uint) {
+        return uint256((_deposit * (100 - fee)) / 100);
+    }
+
     function _mint(address _to, uint _shares) private {
         totalSupply += _shares;
         balanceOf[_to] += _shares;
@@ -49,6 +58,7 @@ contract Vault is Ownable {
 
     function deposit() public payable {
         require(msg.value > 0, "Amount > 0");
+        uint depositWithFee = amtWithFee(msg.value);
         
         /* Determine amount of shares to mint
         a = amount
@@ -62,18 +72,18 @@ contract Vault is Ownable {
         */
         uint shares;
         if (totalSupply == 0) {
-            shares = msg.value;
+            shares = depositWithFee;
         } else {
-            shares = (msg.value * totalSupply) / stakedTotalSupply;
+            shares = (depositWithFee * totalSupply) / stakedTotalSupply;
         }
 
         _mint(msg.sender, shares);
 
         // Register staked bnb
-        stakedTotalSupply += msg.value;
-        stakedBalanceOf[msg.sender] += msg.value;
+        stakedTotalSupply += depositWithFee;
+        stakedBalanceOf[msg.sender] += depositWithFee;
 
-        emit Deposit(msg.sender, msg.value);
+        emit Deposit(msg.sender, depositWithFee);
     }
 
     function submitWithdrawal(uint _shares) external {
@@ -137,7 +147,6 @@ contract Vault is Ownable {
         // burn the shares 
         _burn(msg.sender, _shares);
         
-        // transfer back bnb
         (bool success, ) = payable(msg.sender).call{value: amount}("");
         require(success, "BNB return failed");
     }
