@@ -5,16 +5,38 @@ import './Ownable.sol';
 import './IERC20.sol';
 
 contract Vault is Ownable {
+    enum StatusType {
+        Inactive, // both deposit and withdrawal are inactive
+        DepositInactive, // Not accepting deposits
+        Active 
+    }
+    
+    enum FeeType {
+        Entry,
+        Farming
+    }
+
+    StatusType public contractStatus = StatusType.Inactive;
+
+    uint public constant PRECISION_FACTOR = 10 ** 12;
     uint public duration = 1 minutes;
-    uint8 public fee = 5;
+    uint8 public entryFee = 5;
+    uint8 public farmingFee = 20;
 
     // Vault shares
     uint public totalSupply;
     mapping(address => uint) public balanceOf;
 
-    // staked token
-    uint public stakedTotalSupply;
+    // Staked token
+    address[] public stakeAddresses;
+    mapping(address => uint) public addressToIndex; // need to subtract by 1 to get the true mapping
     mapping(address => uint) public stakedBalanceOf;
+    uint public stakedTotalSupply;
+
+    // Token to stakedUsers records
+    address[] public yieldTokens;
+    mapping(address => uint16) public tokenToIndex; // need to subtract by 1 to get the true mapping
+    mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
 
     struct Withdrawal {
         uint id;
@@ -28,37 +50,18 @@ contract Vault is Ownable {
     Withdrawal[] public withdrawals;
     uint public nextWithdrawalID = 0;
 
+    event StatusChanged(StatusType indexed _type);
     event Deposit(address indexed user, uint amount);
     event PendingWithdrawal(address indexed user, uint amount);
     event Withdrawn(address indexed user, uint withdrawalID);
-
-    function checkBalance() external view returns(uint) {
-        return address(this).balance;
-    }
-
-    function changeFee(uint8 _fee) external onlyOwner {
-        fee = _fee;
-    }
-
-    function amtWithFee(uint _deposit) public view returns (uint) {
-        return uint256((_deposit * (100 - fee)) / 100);
-    }
-
-    function _mint(address _to, uint _shares) private {
-        totalSupply += _shares;
-        balanceOf[_to] += _shares;
-    }
-
-    function _burn(address _from, uint _shares) private {
-        totalSupply -= _shares;
-        balanceOf[_from] -= _shares;
-    }
+    event ClaimedTokens(address indexed token, address indexed user, uint amount);
 
     receive() external payable {}
 
-    function deposit() public payable {
+    // Public functions
+    function deposit() public payable onlyStatusAbove(2) {
         require(msg.value > 0, "Amount > 0");
-        uint depositWithFee = amtWithFee(msg.value);
+        uint depositWithFee = amtWithFee(FeeType.Entry, msg.value);
         
         /* Determine amount of shares to mint
         a = amount
@@ -77,18 +80,18 @@ contract Vault is Ownable {
             shares = (depositWithFee * totalSupply) / stakedTotalSupply;
         }
 
-        _mint(msg.sender, shares);
+        _mintShares(msg.sender, shares);
 
-        // Register staked bnb
         stakedTotalSupply += depositWithFee;
         stakedBalanceOf[msg.sender] += depositWithFee;
 
         emit Deposit(msg.sender, depositWithFee);
     }
 
-    function submitWithdrawal(uint _shares) external {
+    function submitWithdrawal(uint _shares) external onlyStatusAbove(1) {
         require(_shares > 0, "Shares > 0");
         require(_shares <= balanceOf[msg.sender], "Cannot redeem more than you own");
+        // If shares equal to all his/her shares, remove from stakeAddresses
         /*
             a = amount
             B = balance of token before withdraw
@@ -103,7 +106,7 @@ contract Vault is Ownable {
         require(amount <= stakedBalanceOf[msg.sender], 'Redeemed tokens more than owned');
 
         // burn the shares 
-        _burn(msg.sender, _shares);
+        _burnShares(msg.sender, _shares);
 
         // Remove staked tokens
         stakedTotalSupply -= amount;
@@ -123,7 +126,7 @@ contract Vault is Ownable {
         emit PendingWithdrawal(msg.sender, amount);
     }
 
-    function withdraw(uint _id) external {
+    function withdraw(uint _id) external onlyStatusAbove(1) {
         Withdrawal storage staker = withdrawals[_id];
         require(staker.user == msg.sender, "Withdrawal must be staker");
         require(staker.sent == false, "Withdraw processed already");
@@ -136,7 +139,70 @@ contract Vault is Ownable {
         emit Withdrawn(msg.sender, _id);
     }
 
+    function claimYieldTokens(address tokenAddr) public onlyStatusAbove(1) {
+        uint tokenAmt = tokensOfUserBalance[tokenAddr][msg.sender];
+        require(tokenAmt > 0 && tokenAmt <= IERC20(tokenAddr).balanceOf(address(this)), "Token insufficient to withdraw");
+        tokensOfUserBalance[tokenAddr][msg.sender] = 0;
+        IERC20(tokenAddr).transfer(msg.sender, tokenAmt);
+        emit ClaimedTokens(tokenAddr, msg.sender, tokenAmt);
+    }
+
+    // Private functions
+    function _mintShares(address _to, uint _shares) private {
+        totalSupply += _shares;
+        balanceOf[_to] += _shares;
+
+        // Register staked bnb
+        if(addressToIndex[_to] == 0 ) {
+            stakeAddresses.push(_to); // new staker
+            addressToIndex[_to] = stakeAddresses.length;
+        }
+        // otherwise is existing staker do nothing
+    }
+
+    function _burnShares(address _from, uint _shares) private {
+         // If burning entire shares, remove from staker otherwise do nothing
+        if(_shares == balanceOf[_from]) {
+            uint index = addressToIndex[_from] - 1;
+            addressToIndex[_from] = 0;
+            removeStakeAddress(index);
+        }
+        totalSupply -= _shares;
+        balanceOf[_from] -= _shares;
+    }
+
+    function removeStakeAddress(uint _index) private {
+        stakeAddresses[_index] = stakeAddresses[stakeAddresses.length - 1];
+        stakeAddresses.pop();
+    }
+
+    // divide by 10**10 to get %
+    function getAllocationFor(address _user) public view returns(uint) {
+        require(addressToIndex[_user] > 0, 'Address does not exists');
+        require(balanceOf[_user] > 0, 'User does not stake tokens');
+        uint alloc = (balanceOf[_user] * PRECISION_FACTOR) / totalSupply ;
+        return alloc; 
+    }
+
+    // Modifier
+    modifier onlyStatusAbove(uint8 _type) {
+        require(uint8(contractStatus) >= _type, 'Not valid activity');
+        _;
+    }
+
     // Helper functions 
+    function checkBalance() external view returns(uint) {
+        return address(this).balance;
+    }
+
+    function amtWithFee(FeeType feeType ,uint _amount) public view returns (uint) {
+        if(feeType == FeeType.Farming) {
+            return uint256((_amount * (100 - farmingFee)) / 100);
+        } else {
+            return uint256((_amount * (100 - entryFee)) / 100);
+        }
+        
+    }
 
     function emergencyWithdraw() external {
         uint _shares = balanceOf[msg.sender];
@@ -145,14 +211,72 @@ contract Vault is Ownable {
         uint amount = (_shares * stakedTotalSupply) / totalSupply;
         
         // burn the shares 
-        _burn(msg.sender, _shares);
+        _burnShares(msg.sender, _shares);
         
         (bool success, ) = payable(msg.sender).call{value: amount}("");
         require(success, "BNB return failed");
     }
 
+    function isAddressExists(address _address) external view returns(bool isFound) {
+        uint length = stakeAddresses.length;
+        isFound = false;
+        for(uint i = 0; i < length; i++) {
+            if(stakeAddresses[i] == _address) {
+                isFound = true;
+                break;
+            }
+        }
+    }
+
+    // Owner's only
+    function changeEntryFee(uint8 _fee) external onlyOwner {
+        entryFee = _fee;
+    }
+
+    function changeFarmingFee(uint8 _fee) external onlyOwner {
+        farmingFee = _fee;
+    }
+
+    function withdrawTokensToOwner(IERC20 token, uint _amount) external onlyOwner {
+        require(_amount <= token.balanceOf(address(this)), 'Not enough token to return');
+        token.transfer(owner(), _amount);
+    }
+
     function withdrawBNBToOwner() external onlyOwner {
         (bool success, ) = payable(owner()).call{ value: address(this).balance}("");
         require(success, 'Return bnb failed');
+    }
+
+    function addYieldTokens(address tokenAddr, uint _deposit) external onlyOwner {
+        require(tokenAddr != address(0), 'Address must be valid');
+        // check if token exists
+        uint16 tokenIndex = tokenToIndex[tokenAddr];
+        if(tokenIndex == 0) {
+            // token does not exists, add to yieldToken stack
+            yieldTokens.push(tokenAddr);
+            tokenToIndex[tokenAddr] = uint16(yieldTokens.length);
+        } 
+
+        if(_deposit > 0) {
+            IERC20(tokenAddr).transferFrom(owner(), address(this), _deposit);
+        }
+    }
+
+    function allocateYieldTokens(address tokenAddr, uint tokenAmt) external onlyOwner {
+        require(tokenAddr != address(0) && tokenToIndex[tokenAddr] > 0, 'Address must be valid');
+        require(tokenAmt <= IERC20(tokenAddr).balanceOf(address(this)), 'Token not enough to allocate');
+        // Allocate tokens to stakedUsers
+        uint yieldPerShare = tokenAmt * PRECISION_FACTOR / totalSupply;
+        for(uint i = 0; i < stakeAddresses.length; i++) {
+            address userAddr = stakeAddresses[i];
+            uint userAlloc = (balanceOf[userAddr] * yieldPerShare) ;
+            userAlloc = amtWithFee(FeeType.Farming, userAlloc);
+            tokensOfUserBalance[tokenAddr][userAddr] = userAlloc / PRECISION_FACTOR;
+        }
+    }
+
+    function changeStatus(StatusType _type) external onlyOwner {
+        contractStatus = _type;
+        emit StatusChanged(_type);
     }
 }
