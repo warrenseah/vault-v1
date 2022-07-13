@@ -229,12 +229,21 @@ contract Vault is Ownable {
     }
 
     // Owner's only
-    function changeEntryFee(uint8 _fee) external onlyOwner {
-        entryFee = _fee;
+    function changeFee(FeeType _type, uint8 _fee) external onlyOwner {
+        if(_type == FeeType.Entry) {
+            entryFee = _fee;
+        } else {
+            farmingFee = _fee;
+        }
     }
 
-    function changeFarmingFee(uint8 _fee) external onlyOwner {
-        farmingFee = _fee;
+    function changeStatus(StatusType _type) external onlyOwner {
+        contractStatus = _type;
+        emit StatusChanged(_type);
+    }
+
+    function changeDuration(uint _seconds) external onlyOwner {
+        duration = _seconds;
     }
 
     function withdrawTokensToOwner(IERC20 token, uint _amount) external onlyOwner {
@@ -273,10 +282,5 @@ contract Vault is Ownable {
             userAlloc = amtWithFee(FeeType.Farming, userAlloc);
             tokensOfUserBalance[tokenAddr][userAddr] = userAlloc / PRECISION_FACTOR;
         }
-    }
-
-    function changeStatus(StatusType _type) external onlyOwner {
-        contractStatus = _type;
-        emit StatusChanged(_type);
     }
 }
