@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
-
-import "hardhat/console.sol";
+pragma solidity ^0.8.13;
 
 import './Ownable.sol';
 import './IERC20.sol';
@@ -195,6 +193,18 @@ contract Vault is Ownable {
     // Helper functions 
     function checkBalance() external view returns(uint) {
         return address(this).balance;
+    }
+
+    function stakeAddressesLength() external view returns(uint) {
+        return stakeAddresses.length;
+    }
+
+    function yieldTokensLength() external view returns(uint) {
+        return yieldTokens.length;
+    }
+
+    function withdrawalLength() external view returns(uint) {
+        return withdrawals.length;
     }
 
     function amtWithFee(FeeType feeType ,uint _amount) public view returns (uint) {
