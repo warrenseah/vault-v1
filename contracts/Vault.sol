@@ -52,7 +52,7 @@ contract Vault is Ownable {
 
     event StatusChanged(StatusType indexed _type);
     event Deposit(address indexed user, uint amount);
-    event PendingWithdrawal(address indexed user, uint amount);
+    event PendingWithdrawal(uint withdrawalID, address indexed user, uint amount);
     event Withdrawn(address indexed user, uint withdrawalID);
     event ClaimedTokens(address indexed token, address indexed user, uint amount);
 
@@ -121,9 +121,9 @@ contract Vault is Ownable {
             end: block.timestamp + duration,
             sent: false
         }));
-
+        emit PendingWithdrawal(nextWithdrawalID, msg.sender, amount);
         nextWithdrawalID += 1; // increment the nextWithdrawalID
-        emit PendingWithdrawal(msg.sender, amount);
+        
     }
 
     function withdraw(uint _id) external onlyStatusAbove(1) {
@@ -222,19 +222,6 @@ contract Vault is Ownable {
             return uint256((_amount * (100 - entryFee)) / 100);
         }
         
-    }
-
-    function emergencyWithdraw() external {
-        uint _shares = balanceOf[msg.sender];
-        require(_shares > 0, "Shares > 0");
-
-        uint amount = (_shares * stakedTotalSupply) / totalSupply;
-        
-        // burn the shares 
-        _burnShares(msg.sender, _shares);
-        
-        (bool success, ) = payable(msg.sender).call{value: amount}("");
-        require(success, "BNB return failed");
     }
 
     function isAddressExists(address _address) external view returns(bool isFound) {
