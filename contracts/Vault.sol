@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.0;
 
 import './Ownable.sol';
 import './IERC20.sol';
@@ -172,8 +172,16 @@ contract Vault is Ownable {
     }
 
     function removeStakeAddress(uint _index) private {
-        stakeAddresses[_index] = stakeAddresses[stakeAddresses.length - 1];
-        stakeAddresses.pop();
+        // only left 1 staker or user is the latest staker
+        if(stakeAddresses.length == 1 || _index == stakeAddresses.length - 1) {
+            stakeAddresses.pop();
+        } else {
+            uint lastIndex = stakeAddresses.length - 1;
+            addressToIndex[stakeAddresses[lastIndex]] = _index + 1;
+            stakeAddresses[_index] = stakeAddresses[lastIndex];
+            stakeAddresses.pop();
+        }
+        
     }
 
     // divide by 10**10 to get %
