@@ -90,6 +90,7 @@ contract Vault is Ownable {
 
     function submitWithdrawal(uint _shares) external onlyStatusAbove(1) {
         require(_shares > 0, "Shares > 0");
+        require(addressToIndex[msg.sender] > 0, "User must be a staker");
         require(_shares <= balanceOf[msg.sender], "Cannot redeem more than you own");
         // If shares equal to all his/her shares, remove from stakeAddresses
         /*

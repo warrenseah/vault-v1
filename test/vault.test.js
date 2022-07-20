@@ -63,10 +63,10 @@ describe("Vault Contract", function () {
     const status = 2;
     const duration = 120;
 
-    // Should revert because not owner to changeFee
+    // Unhappy pass non owner changeFee
     await expect(vaultWallet1.changeFee(0, entryFee)).to.be.revertedWith("Ownable: caller is not the owner");
     
-    // Fee should change
+    // Happy pass. Fee should change
     expect(await vault.entryFee()).to.equal(5, 'entryFee is not default setting');
     expect(await vault.farmingFee()).to.equal(20, 'farmingFee is not default setting');
 
@@ -94,15 +94,15 @@ describe("Vault Contract", function () {
     const deposit1 = ethers.utils.parseUnits('1');
     const depositWithFee = await vault.amtWithFee(0, deposit1);
 
-    // Deposit will fail when contractStatus is 0
+    // Unhappy pass deposit will fail when contractStatus is 0
     await expect(vaultWallet1.deposit({value: deposit1})).to.be.revertedWith("Not valid activity");
 
-    // Deposit will fail if contractStatus is 1
+    // Unhappy pass deposit will fail when contractStatus is 1
     await vaultSign.changeStatus(1);
     expect(await vault.contractStatus()).to.equal(1, 'contractStatus is not set to 1');
     await expect(vaultWallet1.deposit({value: deposit1})).to.be.revertedWith("Not valid activity");
     
-    // Deposit will be success if contractStatus is 2
+    // Happy pass deposit will be success when contractStatus is 2
     await vaultSign.changeStatus(2);
     expect(await vault.contractStatus()).to.equal(2, 'contractStatus is not set to 2');
 
@@ -119,13 +119,22 @@ describe("Vault Contract", function () {
     await expect(vaultWallet2.deposit({value: deposit1})).to.changeEtherBalance(wallet2, '-1000000000000000000');
     expect(await vault.stakedBalanceOf(wallet2.address)).to.equal(depositWithFee, 'Deposit balance is not equal');
 
-    // Withdrawal will fail if contractStatus is 0
+    // Unhappy pass submitWithdrawal will fail when contractStatus is 0
     await vaultSign.changeStatus(0);
     const wallet1Shares = await vault.balanceOf(wallet1.address);
     await expect(vaultWallet1.submitWithdrawal(wallet1Shares)).to.be.revertedWith("Not valid activity");
 
-    // Withdrawal will pass if contractStatus is 1
+    // Unhappy pass submitWithdrawal by a non staker
     await vaultSign.changeStatus(1);
+    await expect(vaultWallet3.submitWithdrawal(5)).to.be.revertedWith("User must be a staker");
+
+    // Unhappy pass when shares specified is zero
+    await expect(vaultWallet1.submitWithdrawal(0)).to.be.revertedWith("Shares > 0");
+
+    // Unhappy pass when redeemed shares more than user owns
+    await expect(vaultWallet1.submitWithdrawal(wallet1Shares.add('100000'))).to.be.revertedWith("Cannot redeem more than you own");
+
+    // Happy pass submitWithdrawal
     await expect(vaultWallet1.submitWithdrawal(wallet1Shares)).to.emit(vaultWallet1, "PendingWithdrawal").withArgs(0, wallet1.address, wallet1Shares);
     expect(await vault.balanceOf(wallet1.address)).to.equal(0, "Shares are not burnt upon withdrawal");
     expect(await vault.stakedBalanceOf(wallet1.address)).to.equal(0, "Staked balance is not zero");
@@ -146,13 +155,18 @@ describe("Vault Contract", function () {
     expect(pendingWithdrawal['end']).to.be.gt( await time.latest(), 'pendingWithdrawal time must be in the future');
     expect(pendingWithdrawal['sent']).to.be.false;
 
-    // To revert withdrawal 
+    // Unhappy pass withdrawal will fail when contractStatus is 0 
     await vaultSign.changeStatus(0);
     await expect(vaultWallet1.withdraw(0)).to.be.revertedWith("Not valid activity");
+    
+    // Unhappy pass withdrawal user is not msg.sender
     await vaultSign.changeStatus(1);
     await expect(vaultWallet2.withdraw(0)).to.be.revertedWith("Withdrawal must be staker");
+    
+    // Unhappy pass withdrawal end time is still enforced
     await expect(vaultWallet1.withdraw(0)).to.be.revertedWith("Timelock is active");
     
+    // Happy pass for withdrawal past withdrawal end time
     // increase time to process withdrawal
     await time.increase(3600);
     
@@ -169,10 +183,7 @@ describe("Vault Contract", function () {
     expect(wallet1Withdrawal['sent']).to.be.true;
     expect(wallet1Withdrawal['end']).to.be.lt( await time.latest(), 'wallet1Withdrawal time must already have past');
 
-    await expect(vaultWallet1.submitWithdrawal(0)).to.be.revertedWith("Shares > 0");
-    await expect(vaultWallet1.submitWithdrawal(1)).to.be.revertedWith("Cannot redeem more than you own");
-
-    // withdrawal to process when contractStatus is 2
+    // Happy pass withdrawal to process when contractStatus is 2
     await vaultSign.changeStatus(2);
 
     await vaultWallet2.submitWithdrawal(wallet1Shares);
