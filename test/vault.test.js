@@ -231,9 +231,10 @@ describe("Vault Contract", function () {
       faucetBal
     );
     
-    // add to Vault contract
+    // Unhappy pass addYieldTokens with a ethereum zero address
     await expect(vaultSign.addYieldTokens(ethers.constants.AddressZero, faucetBal)).to.be.revertedWith("Address must be valid");
 
+    // Happy pass addYieldTokens with owner address
     await expect(vaultSign.addYieldTokens(mockToken.address, faucetBal)).to.changeTokenBalance(
       mockToken,
       owner,
@@ -243,10 +244,12 @@ describe("Vault Contract", function () {
     expect(await vault.yieldTokensLength()).to.equal(1, 'mockToken not added to yieldTokens array');
     expect(await mockToken.balanceOf(vault.address)).to.equal(faucetBal, 'mockToken balance not transfer to vault contract');
 
-    // Allocate tokens to stakers
+    // Unhappy pass allocateYieldTokens to stakers with a ethereum zero address
     await expect(vaultSign.allocateYieldTokens(ethers.constants.AddressZero, faucetBal)).to.be.revertedWith("Address must be valid");
+    // Unhappy pass allocateYieldTokens to stakers with tokens owner dont own.
     await expect(vaultSign.allocateYieldTokens(mockToken.address, ethers.utils.parseUnits('200000'))).to.be.revertedWith("Token not enough to allocate");
     
+    // Happy pass allocateYieldTokens to stakers
     await vaultSign.allocateYieldTokens(mockToken.address, faucetBal);
     expect(await vault.tokensOfUserBalance(mockToken.address, wallet1.address)).to.equal('15999999999999999680000', "token is not allocated to staker1");
     expect(await vault.tokensOfUserBalance(mockToken.address, wallet2.address)).to.equal('63999999999999998720000', "token is not allocated to staker2");
@@ -262,11 +265,13 @@ describe("Vault Contract", function () {
 
   it("should transfer ownership to new owner", async function() {
 
-    // unhappy pass for non-owner to call
+    // Unhappy pass for non-owner to call
     await expect(vaultWallet1.transferOwnership(wallet1.address)).to.be.revertedWith("Ownable: caller is not the owner");
-    // unhappy pass for ethereum zero address
+    
+    // Unhappy pass for ethereum zero address
     await expect(vaultSign.transferOwnership(ethers.constants.AddressZero)).to.be.revertedWith("Ownable: new owner is the zero address");
-    // happy pass
+    
+    // Happy pass to transferOwnership
     expect(await vaultSign.transferOwnership(wallet1.address)).to.emit("OwnershipTransferred").withArgs(owner.address, wallet1.address);
     await expect(vaultSign.changeStatus(0)).to.be.revertedWith("Ownable: caller is not the owner");
     expect(await vault.owner()).to.equal(wallet1.address);
