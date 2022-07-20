@@ -263,6 +263,9 @@ describe("Vault Contract", function () {
   });
 
   it("should renounce ownership", async function() {
-
+    expect(await vaultWallet1.renounceOwnership()).to.emit("OwnershipTransferred").withArgs(wallet1.address, ethers.constants.AddressZero);
+    expect(await vault.owner()).to.equal(ethers.constants.AddressZero, "Owner address is not zero");
   });
+
+  // need to deployFixture in the next test
 });
