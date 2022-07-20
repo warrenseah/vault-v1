@@ -1,18 +1,17 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { loadFixture, mine, time } = require("@nomicfoundation/hardhat-network-helpers");
-const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
 describe("Vault Contract", function () {
   let vault, mockToken;
-  let owner, wallet1, wallet2;
+  let owner, wallet1, wallet2, wallet3;
 
   async function deployContractsFixture() {
     const MockToken = await ethers.getContractFactory("MockToken");
     mockToken = await MockToken.deploy();
     await mockToken.deployed();
     
-    [owner, wallet1, wallet2] = await ethers.getSigners();
+    [owner, wallet1, wallet2, wallet3] = await ethers.getSigners();
   
     const Vault = await ethers.getContractFactory("Vault");
     vault = await Vault.deploy();
@@ -198,5 +197,59 @@ describe("Vault Contract", function () {
     await time.increase(3600);
 
     await expect(vaultWallet2.withdraw(1)).to.changeEtherBalance(wallet2, ethers.BigNumber.from('950000000000000000'));
+  });
+
+  it("should transfer mockTokens when owner allocate and user claim", async function() {
+    const deposit1 = ethers.utils.parseUnits('1');
+    const deposit1WithFee = await vault.amtWithFee(0, deposit1);
+
+    const deposit2 = ethers.utils.parseUnits('4');
+    const deposit2WithFee = await vault.amtWithFee(0, deposit2);
+
+    const vaultSign = vault.connect(owner);
+    const vaultWallet1 = vault.connect(wallet1);
+    const vaultWallet2 = vault.connect(wallet2);
+    
+    await vaultWallet1.deposit({value: deposit1});
+    await vaultWallet2.deposit({value: deposit2});
+
+    const faucetBal = await mockToken.balanceOf(owner.address);
+    expect(faucetBal).to.equal(ethers.utils.parseUnits('100000'));
+
+    // approve
+    expect(await mockToken.approve(vault.address, faucetBal)).to.emit("Approval").withArgs(
+      owner,
+      vault,
+      faucetBal
+    );
+    
+    // add to Vault contract
+    await expect(vaultSign.addYieldTokens(ethers.constants.AddressZero, faucetBal)).to.be.revertedWith("Address must be valid");
+
+    await expect(vaultSign.addYieldTokens(mockToken.address, faucetBal)).to.changeTokenBalance(
+      mockToken,
+      owner,
+      `-${faucetBal.toString()}`
+    );
+    expect(await vault.tokenToIndex(mockToken.address)).to.equal(1, 'mockToken not added to tokenToIndex');
+    expect(await vault.yieldTokensLength()).to.equal(1, 'mockToken not added to yieldTokens array');
+    expect(await mockToken.balanceOf(vault.address)).to.equal(faucetBal, 'mockToken balance not transfer to vault contract');
+
+    // Allocate tokens to stakers
+    await expect(vaultSign.allocateYieldTokens(ethers.constants.AddressZero, faucetBal)).to.be.revertedWith("Address must be valid");
+    await expect(vaultSign.allocateYieldTokens(mockToken.address, ethers.utils.parseUnits('200000'))).to.be.revertedWith("Token not enough to allocate");
+    
+    await vaultSign.allocateYieldTokens(mockToken.address, faucetBal);
+    expect(await vault.tokensOfUserBalance(mockToken.address, wallet1.address)).to.equal('15999999999999999680000', "token is not allocated to staker1");
+    expect(await vault.tokensOfUserBalance(mockToken.address, wallet2.address)).to.equal('63999999999999998720000', "token is not allocated to staker2");
+    // console.log(await vault.tokensOfUserBalance(mockToken.address, wallet1.address));
+    // console.log(await vault.tokensOfUserBalance(mockToken.address, wallet2.address));
+
+    // Claim tokens
+    // await vaultWallet1.claimYieldTokens(mockToken.address);
+    expect(await vaultWallet1.claimYieldTokens(mockToken.address)).to.emit("Transfer").withArgs(vault.address, wallet1.address, '15999999999999999680000');
+    expect(await mockToken.balanceOf(wallet1.address)).to.equal('15999999999999999680000', "claimedTokens is not transferred to wallet1");
+    expect(await vaultWallet2.claimYieldTokens(mockToken.address)).to.emit("ClaimedTokens").withArgs(mockToken.address, wallet2.address, '63999999999999998720000');
+    expect(await mockToken.balanceOf(wallet2.address)).to.equal('63999999999999998720000', "claimedTokens is not transferred to wallet2");
   });
 });
