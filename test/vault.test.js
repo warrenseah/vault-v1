@@ -5,6 +5,7 @@ const { loadFixture, mine, time } = require("@nomicfoundation/hardhat-network-he
 describe("Vault Contract", function () {
   let vault, mockToken;
   let owner, wallet1, wallet2, wallet3;
+  let vaultSign, vaultWallet1, vaultWallet2, vaultWallet3;
 
   async function deployContractsFixture() {
     const MockToken = await ethers.getContractFactory("MockToken");
@@ -16,6 +17,11 @@ describe("Vault Contract", function () {
     const Vault = await ethers.getContractFactory("Vault");
     vault = await Vault.deploy();
     await vault.deployed();
+
+    vaultSign = vault.connect(owner);
+    vaultWallet1 = vault.connect(wallet1);
+    vaultWallet2 = vault.connect(wallet2);
+    vaultWallet3 = vault.connect(wallet3);
   }
 
   it("should deploy with admin as address", async function () {
@@ -58,11 +64,9 @@ describe("Vault Contract", function () {
     const duration = 120;
 
     // Should revert because not owner to changeFee
-    const vaultRead = vault.connect(wallet1);
-    await expect(vaultRead.changeFee(0, entryFee)).to.be.revertedWith("Ownable: caller is not the owner");
+    await expect(vaultWallet1.changeFee(0, entryFee)).to.be.revertedWith("Ownable: caller is not the owner");
     
     // Fee should change
-    const vaultSign = vault.connect(owner);
     expect(await vault.entryFee()).to.equal(5, 'entryFee is not default setting');
     expect(await vault.farmingFee()).to.equal(20, 'farmingFee is not default setting');
 
@@ -89,9 +93,6 @@ describe("Vault Contract", function () {
 
     const deposit1 = ethers.utils.parseUnits('1');
     const depositWithFee = await vault.amtWithFee(0, deposit1);
-    const vaultSign = vault.connect(owner);
-    const vaultWallet1 = vault.connect(wallet1);
-    const vaultWallet2 = vault.connect(wallet2);
 
     // Deposit will fail when contractStatus is 0
     await expect(vaultWallet1.deposit({value: deposit1})).to.be.revertedWith("Not valid activity");
@@ -205,10 +206,6 @@ describe("Vault Contract", function () {
 
     const deposit2 = ethers.utils.parseUnits('4');
     const deposit2WithFee = await vault.amtWithFee(0, deposit2);
-
-    const vaultSign = vault.connect(owner);
-    const vaultWallet1 = vault.connect(wallet1);
-    const vaultWallet2 = vault.connect(wallet2);
     
     await vaultWallet1.deposit({value: deposit1});
     await vaultWallet2.deposit({value: deposit2});
@@ -246,10 +243,26 @@ describe("Vault Contract", function () {
     // console.log(await vault.tokensOfUserBalance(mockToken.address, wallet2.address));
 
     // Claim tokens
-    // await vaultWallet1.claimYieldTokens(mockToken.address);
     expect(await vaultWallet1.claimYieldTokens(mockToken.address)).to.emit("Transfer").withArgs(vault.address, wallet1.address, '15999999999999999680000');
     expect(await mockToken.balanceOf(wallet1.address)).to.equal('15999999999999999680000', "claimedTokens is not transferred to wallet1");
     expect(await vaultWallet2.claimYieldTokens(mockToken.address)).to.emit("ClaimedTokens").withArgs(mockToken.address, wallet2.address, '63999999999999998720000');
     expect(await mockToken.balanceOf(wallet2.address)).to.equal('63999999999999998720000', "claimedTokens is not transferred to wallet2");
+  });
+
+  it("should transfer ownership to new owner", async function() {
+
+    // unhappy pass for non-owner to call
+    await expect(vaultWallet1.transferOwnership(wallet1.address)).to.be.revertedWith("Ownable: caller is not the owner");
+    // unhappy pass for ethereum zero address
+    await expect(vaultSign.transferOwnership(ethers.constants.AddressZero)).to.be.revertedWith("Ownable: new owner is the zero address");
+    // happy pass
+    expect(await vaultSign.transferOwnership(wallet1.address)).to.emit("OwnershipTransferred").withArgs(owner.address, wallet1.address);
+    await expect(vaultSign.changeStatus(0)).to.be.revertedWith("Ownable: caller is not the owner");
+    expect(await vault.owner()).to.equal(wallet1.address);
+    await vaultWallet1.changeStatus(0);
+  });
+
+  it("should renounce ownership", async function() {
+
   });
 });
