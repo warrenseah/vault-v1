@@ -91,7 +91,7 @@ contract Vault is Ownable {
     function submitWithdrawal(uint _shares) external onlyStatusAbove(1) {
         require(_shares > 0, "Shares > 0");
         require(addressToIndex[msg.sender] > 0, "User must be a staker");
-        require(_shares <= balanceOf[msg.sender], "Cannot redeem more than you own");
+        require(_shares <= balanceOf[msg.sender], "Not enough shares");
         // If shares equal to all his/her shares, remove from stakeAddresses
         /*
             a = amount
@@ -104,7 +104,7 @@ contract Vault is Ownable {
             a = sB / T
         */
         uint amount = (_shares * stakedTotalSupply) / totalSupply;
-        require(amount <= stakedBalanceOf[msg.sender], 'Redeemed tokens more than owned');
+        require(amount <= stakedBalanceOf[msg.sender], 'Not enough stakedTokens');
 
         // burn the shares 
         _burnShares(msg.sender, _shares);

@@ -132,7 +132,7 @@ describe("Vault Contract", function () {
     await expect(vaultWallet1.submitWithdrawal(0)).to.be.revertedWith("Shares > 0");
 
     // Unhappy pass when redeemed shares more than user owns
-    await expect(vaultWallet1.submitWithdrawal(wallet1Shares.add('100000'))).to.be.revertedWith("Cannot redeem more than you own");
+    await expect(vaultWallet1.submitWithdrawal(wallet1Shares.add('100000'))).to.be.revertedWith("Not enough shares");
 
     // Happy pass submitWithdrawal
     await expect(vaultWallet1.submitWithdrawal(wallet1Shares)).to.emit(vaultWallet1, "PendingWithdrawal").withArgs(0, wallet1.address, wallet1Shares);
