@@ -18,11 +18,12 @@ contract Vault is Ownable {
 
     StatusType public contractStatus = StatusType.Inactive;
 
-    uint public constant PRECISION_FACTOR = 10 ** 12;
-    uint public duration = 1 minutes;
     uint8 public entryFee = 5;
     uint8 public farmingFee = 20;
-
+    uint public constant PRECISION_FACTOR = 10 ** 12;
+    uint public duration = 1 minutes;
+    uint public nextWithdrawalID = 0;
+    
     // Vault shares
     uint public totalSupply;
     mapping(address => uint) public balanceOf;
@@ -48,7 +49,6 @@ contract Vault is Ownable {
     }
 
     Withdrawal[] public withdrawals;
-    uint public nextWithdrawalID = 0;
 
     event StatusChanged(StatusType indexed _type);
     event Deposit(address indexed user, uint amount);
