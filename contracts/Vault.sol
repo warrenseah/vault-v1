@@ -28,11 +28,11 @@ contract Vault is Ownable {
     uint public totalSupply;
     mapping(address => uint) public balanceOf;
 
-    // Staked token
-    address[] public stakeAddresses;
+    // Stakeholder token
+    address[] public stakeholders;
     mapping(address => uint) public addressToIndex; // need to subtract by 1 to get the true mapping
-    mapping(address => uint) public stakedBalanceOf;
-    uint public stakedTotalSupply;
+    mapping(address => uint) public stakeOf;
+    uint public totalStakes;
 
     // Token to stakedUsers records
     address[] public yieldTokens;
@@ -77,13 +77,13 @@ contract Vault is Ownable {
         if (totalSupply == 0) {
             shares = depositWithFee;
         } else {
-            shares = (depositWithFee * totalSupply) / stakedTotalSupply;
+            shares = (depositWithFee * totalSupply) / totalStakes;
         }
 
         _mintShares(msg.sender, shares);
 
-        stakedTotalSupply += depositWithFee;
-        stakedBalanceOf[msg.sender] += depositWithFee;
+        totalStakes += depositWithFee;
+        stakeOf[msg.sender] += depositWithFee;
 
         emit Deposit(msg.sender, depositWithFee);
     }
@@ -103,15 +103,15 @@ contract Vault is Ownable {
 
             a = sB / T
         */
-        uint amount = (_shares * stakedTotalSupply) / totalSupply;
-        require(amount <= stakedBalanceOf[msg.sender], 'Not enough stakedTokens');
+        uint amount = (_shares * totalStakes) / totalSupply;
+        require(amount <= stakeOf[msg.sender], 'Not enough stakedTokens');
 
         // burn the shares 
         _burnShares(msg.sender, _shares);
 
         // Remove staked tokens
-        stakedTotalSupply -= amount;
-        stakedBalanceOf[msg.sender] -= amount;
+        totalStakes -= amount;
+        stakeOf[msg.sender] -= amount;
         
         // Set withdrawal with timelock
         withdrawals.push( Withdrawal({
@@ -155,8 +155,8 @@ contract Vault is Ownable {
 
         // Register staked bnb
         if(addressToIndex[_to] == 0 ) {
-            stakeAddresses.push(_to); // new staker
-            addressToIndex[_to] = stakeAddresses.length;
+            stakeholders.push(_to); // new staker
+            addressToIndex[_to] = stakeholders.length;
         }
         // otherwise is existing staker do nothing
     }
@@ -174,13 +174,13 @@ contract Vault is Ownable {
 
     function removeStakeAddress(uint _index) private {
         // only left 1 staker or user is the latest staker
-        if(stakeAddresses.length == 1 || _index == stakeAddresses.length - 1) {
-            stakeAddresses.pop();
+        if(stakeholders.length == 1 || _index == stakeholders.length - 1) {
+            stakeholders.pop();
         } else {
-            uint lastIndex = stakeAddresses.length - 1;
-            addressToIndex[stakeAddresses[lastIndex]] = _index + 1;
-            stakeAddresses[_index] = stakeAddresses[lastIndex];
-            stakeAddresses.pop();
+            uint lastIndex = stakeholders.length - 1;
+            addressToIndex[stakeholders[lastIndex]] = _index + 1;
+            stakeholders[_index] = stakeholders[lastIndex];
+            stakeholders.pop();
         }
         
     }
@@ -204,8 +204,8 @@ contract Vault is Ownable {
         return address(this).balance;
     }
 
-    function stakeAddressesLength() external view returns(uint) {
-        return stakeAddresses.length;
+    function stakeholdersLength() external view returns(uint) {
+        return stakeholders.length;
     }
 
     function yieldTokensLength() external view returns(uint) {
@@ -226,10 +226,10 @@ contract Vault is Ownable {
     }
 
     function isAddressExists(address _address) external view returns(bool isFound) {
-        uint length = stakeAddresses.length;
+        uint length = stakeholders.length;
         isFound = false;
         for(uint i = 0; i < length; i++) {
-            if(stakeAddresses[i] == _address) {
+            if(stakeholders[i] == _address) {
                 isFound = true;
                 break;
             }
@@ -284,8 +284,8 @@ contract Vault is Ownable {
         require(tokenAmt <= IERC20(tokenAddr).balanceOf(address(this)), 'Token not enough to allocate');
         // Allocate tokens to stakedUsers
         uint yieldPerShare = tokenAmt * PRECISION_FACTOR / totalSupply;
-        for(uint i = 0; i < stakeAddresses.length; i++) {
-            address userAddr = stakeAddresses[i];
+        for(uint i = 0; i < stakeholders.length; i++) {
+            address userAddr = stakeholders[i];
             uint userAlloc = (balanceOf[userAddr] * yieldPerShare) ;
             userAlloc = amtWithFee(FeeType.Farming, userAlloc);
             tokensOfUserBalance[tokenAddr][userAddr] = userAlloc / PRECISION_FACTOR;
