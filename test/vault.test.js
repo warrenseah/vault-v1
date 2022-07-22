@@ -49,9 +49,9 @@ describe("Vault Contract", function () {
     expect(await vault.entryFee()).to.equal(config.entryFee, 'entryFee not the same');
     expect(await vault.farmingFee()).to.equal(config.farmingFee, 'farmingFee not the same');
     expect(await vault.totalSupply()).to.equal(0, 'totalSupply is not the same');
-    expect(await vault.stakedTotalSupply()).to.equal(0, 'stakedTotalSupply is not the same');
+    expect(await vault.totalStakes()).to.equal(0, 'totalStakes is not the same');
     expect(await vault.nextWithdrawalID()).to.equal(0, 'nextWithdrawalID is not the same');
-    expect(await vault.stakeAddressesLength()).to.equal(0, 'stakeAddressesLength is not the same');
+    expect(await vault.stakeholdersLength()).to.equal(0, 'stakeholdersLength is not the same');
     expect(await vault.yieldTokensLength()).to.equal(0, 'yieldTokensLength is not the same');
     expect(await vault.withdrawalLength()).to.equal(0, 'withdrawalLength is not the same');
   });
@@ -108,16 +108,16 @@ describe("Vault Contract", function () {
 
     await expect(vaultWallet1.deposit({value: deposit1})).to.emit(vaultWallet1, "Deposit").withArgs(wallet1.address, depositWithFee);
     expect(await vault.balanceOf(wallet1.address)).to.equal(depositWithFee, "Shares are not minted on deposit");
-    expect(await vault.stakedBalanceOf(wallet1.address)).to.equal(depositWithFee, 'Deposit balance is not equal');
+    expect(await vault.stakeOf(wallet1.address)).to.equal(depositWithFee, 'Deposit balance is not equal');
     expect(await vault.totalSupply()).to.equal(depositWithFee, 'totalSupply is not equal to minted shares');
-    expect(await vault.stakedTotalSupply()).to.equal(depositWithFee, 'stakedTotalSupply is not equal to staked tokens');
+    expect(await vault.totalStakes()).to.equal(depositWithFee, 'totalStakes is not equal to staked tokens');
 
     const stakerIndex = await vault.addressToIndex(wallet1.address);
     expect(stakerIndex).to.equal(1);
-    expect(await vault.stakeAddresses(stakerIndex - 1)).to.equal(wallet1.address);
+    expect(await vault.stakeholders(stakerIndex - 1)).to.equal(wallet1.address);
 
     await expect(vaultWallet2.deposit({value: deposit1})).to.changeEtherBalance(wallet2, '-1000000000000000000');
-    expect(await vault.stakedBalanceOf(wallet2.address)).to.equal(depositWithFee, 'Deposit balance is not equal');
+    expect(await vault.stakeOf(wallet2.address)).to.equal(depositWithFee, 'Deposit balance is not equal');
 
     // Unhappy pass submitWithdrawal will fail when contractStatus is 0
     await vaultSign.changeStatus(0);
@@ -137,15 +137,15 @@ describe("Vault Contract", function () {
     // Happy pass submitWithdrawal
     await expect(vaultWallet1.submitWithdrawal(wallet1Shares)).to.emit(vaultWallet1, "PendingWithdrawal").withArgs(0, wallet1.address, wallet1Shares);
     expect(await vault.balanceOf(wallet1.address)).to.equal(0, "Shares are not burnt upon withdrawal");
-    expect(await vault.stakedBalanceOf(wallet1.address)).to.equal(0, "Staked balance is not zero");
+    expect(await vault.stakeOf(wallet1.address)).to.equal(0, "Staked balance is not zero");
     expect(await vault.totalSupply()).to.equal(ethers.BigNumber.from('950000000000000000'), 'totalSupply is not reduced upon withdrawal');
-    expect(await vault.stakedTotalSupply()).to.equal(ethers.BigNumber.from('950000000000000000'), 'totalSupply is not reduced upon withdrawal');
+    expect(await vault.totalStakes()).to.equal(ethers.BigNumber.from('950000000000000000'), 'totalStakes is not reduced upon withdrawal');
     expect(await vault.addressToIndex(wallet1.address)).to.equal(0, "addressToIndex is not zero");
     expect(await vault.isAddressExists(wallet1.address)).to.be.false;
 
     expect(await vault.nextWithdrawalID()).to.equal(1, 'nextWithdrawalID is not equal to 1');
     expect(await vault.withdrawalLength()).to.equal(1, 'withdrawalLength is not equal to 1');
-    expect(await vault.stakeAddressesLength()).to.equal(1, 'stakeAddressesLength is reduced by one pendingWithdrawal');
+    expect(await vault.stakeholdersLength()).to.equal(1, 'stakeholdersLength is reduced by one pendingWithdrawal');
 
     const pendingWithdrawal = await vault.withdrawals(0);
     expect(pendingWithdrawal['id']).to.equal(0, 'Withdrawal id is not equal to 0');
@@ -188,15 +188,15 @@ describe("Vault Contract", function () {
 
     await vaultWallet2.submitWithdrawal(wallet1Shares);
     expect(await vault.balanceOf(wallet2.address)).to.equal(0, "Shares are not burnt upon withdrawal");
-    expect(await vault.stakedBalanceOf(wallet2.address)).to.equal(0, "Staked balance is not zero");
+    expect(await vault.stakeOf(wallet2.address)).to.equal(0, "Staked balance is not zero");
     expect(await vault.totalSupply()).to.equal(0, 'totalSupply is not reduced upon withdrawal');
-    expect(await vault.stakedTotalSupply()).to.equal(0, 'totalSupply is not reduced upon withdrawal');
+    expect(await vault.totalStakes()).to.equal(0, 'totalStakes is not reduced upon withdrawal');
     expect(await vault.addressToIndex(wallet2.address)).to.equal(0, "addressToIndex is not zero");
     expect(await vault.isAddressExists(wallet2.address)).to.be.false;
 
     expect(await vault.nextWithdrawalID()).to.equal(2, 'nextWithdrawalID is not equal to 2');
     expect(await vault.withdrawalLength()).to.equal(2, 'withdrawalLength is not equal to 2');
-    expect(await vault.stakeAddressesLength()).to.equal(0, 'stakeAddressesLength is reduced by one pendingWithdrawal');
+    expect(await vault.stakeholdersLength()).to.equal(0, 'stakeholdersLength is reduced by one pendingWithdrawal');
 
     const pending2Withdrawal = await vault.withdrawals(1);
     expect(pending2Withdrawal['id']).to.equal(1, 'Withdrawal id is not equal to 0');
