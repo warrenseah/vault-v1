@@ -5,6 +5,7 @@ import './Ownable.sol';
 import './IERC20.sol';
 
 contract Vault is Ownable {
+    
     enum StatusType {
         Inactive, // both deposit and withdrawal are inactive
         DepositInactive, // Not accepting deposits
@@ -29,10 +30,19 @@ contract Vault is Ownable {
     mapping(address => uint) public balanceOf;
 
     // Stakeholder token
-    address[] public stakeholders;
-    mapping(address => uint) public addressToIndex; // need to subtract by 1 to get the true mapping
+    struct Stake {
+        uint id;
+        address user;
+        uint amount;
+        uint sinceTime;
+        uint tillTime;
+    }
+    
+    Stake[] public stakeholders;
+    mapping(address => uint[]) public addressToStakeIds; // need to subtract by 1 to get the true mapping
     mapping(address => uint) public stakeOf;
     uint public totalStakes;
+    uint public nextStakeholderId = 0;
 
     // Token to stakedUsers records
     address[] public yieldTokens;
@@ -51,7 +61,7 @@ contract Vault is Ownable {
     Withdrawal[] public withdrawals;
 
     event StatusChanged(StatusType indexed _type);
-    event Deposit(address indexed user, uint amount);
+    event Deposit(address indexed user, uint indexed stakeId, uint amount);
     event PendingWithdrawal(uint withdrawalID, address indexed user, uint amount);
     event Withdrawn(address indexed user, uint withdrawalID);
     event ClaimedTokens(address indexed token, address indexed user, uint amount);
@@ -80,12 +90,30 @@ contract Vault is Ownable {
             shares = (depositWithFee * totalSupply) / totalStakes;
         }
 
+        stakeholders.push(Stake({
+            id: nextStakeholderId,
+            user: msg.sender,
+            amount: depositWithFee,
+            sinceTime: block.timestamp,
+            tillTime: 0
+        }));
+
+        nextStakeholderId += 1;
         _mintShares(msg.sender, shares);
 
+        // Update addressToStakeIds
+        if(stakeOf[msg.sender] == 0 ) {
+            uint[] memory stakeIndex = new uint[](1);
+            addressToStakeIds[msg.sender] = stakeIndex[stakeholders.length];
+        } else {
+            uint[] storage stakeIndexes = addressToStakeIds[msg.sender];
+            stakeIndexes.push(stakeholders.length);
+        }
+        
         totalStakes += depositWithFee;
         stakeOf[msg.sender] += depositWithFee;
 
-        emit Deposit(msg.sender, depositWithFee);
+        emit Deposit(msg.sender, nextStakeholderId - 1, depositWithFee);
     }
 
     function submitWithdrawal(uint _shares) external onlyStatusAbove(1) {
@@ -152,13 +180,6 @@ contract Vault is Ownable {
     function _mintShares(address _to, uint _shares) private {
         totalSupply += _shares;
         balanceOf[_to] += _shares;
-
-        // Register staked bnb
-        if(addressToIndex[_to] == 0 ) {
-            stakeholders.push(_to); // new staker
-            addressToIndex[_to] = stakeholders.length;
-        }
-        // otherwise is existing staker do nothing
     }
 
     function _burnShares(address _from, uint _shares) private {
