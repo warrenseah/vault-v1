@@ -118,7 +118,7 @@ contract Vault is Ownable {
 
     function submitWithdrawal(uint _shares) external onlyStatusAbove(1) {
         require(_shares > 0, "Shares > 0");
-        require(addressToIndex[msg.sender] > 0, "User must be a staker");
+        require(addressToStakeIds[msg.sender].length > 0, "User must be a staker");
         require(_shares <= balanceOf[msg.sender], "Not enough shares");
         // If shares equal to all his/her shares, remove from stakeAddresses
         /*
@@ -208,7 +208,7 @@ contract Vault is Ownable {
 
     // divide by 10**10 to get %
     function getAllocationFor(address _user) public view returns(uint) {
-        require(addressToIndex[_user] > 0, 'Address does not exists');
+        require(addressToStakeIds[_user].length > 0, 'Address does not exists');
         require(balanceOf[_user] > 0, 'User does not stake tokens');
         uint alloc = (balanceOf[_user] * PRECISION_FACTOR) / totalSupply ;
         return alloc; 
