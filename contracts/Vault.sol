@@ -33,7 +33,8 @@ contract Vault is Ownable {
     struct Stake {
         uint id;
         address user;
-        uint amount;
+        uint shares;
+        uint amountInTokens;
         uint sinceTime;
         uint tillTime;
     }
@@ -62,7 +63,7 @@ contract Vault is Ownable {
 
     event StatusChanged(StatusType indexed _type);
     event Deposit(address indexed user, uint indexed stakeId, uint amount);
-    event PendingWithdrawal(uint withdrawalID, address indexed user, uint amount);
+    event PendingWithdrawal(uint indexed withdrawalID, uint indexed stakeId, address indexed user, uint amount);
     event Withdrawn(address indexed user, uint withdrawalID);
     event ClaimedTokens(address indexed token, address indexed user, uint amount);
 
@@ -93,7 +94,8 @@ contract Vault is Ownable {
         stakeholders.push(Stake({
             id: nextStakeholderId,
             user: msg.sender,
-            amount: depositWithFee,
+            amountInTokens: depositWithFee,
+            shares: shares,
             sinceTime: block.timestamp,
             tillTime: 0
         }));
@@ -102,13 +104,7 @@ contract Vault is Ownable {
         _mintShares(msg.sender, shares);
 
         // Update addressToStakeIds
-        if(stakeOf[msg.sender] == 0 ) {
-            uint[] memory stakeIndex = new uint[](1);
-            addressToStakeIds[msg.sender] = stakeIndex[stakeholders.length];
-        } else {
-            uint[] storage stakeIndexes = addressToStakeIds[msg.sender];
-            stakeIndexes.push(stakeholders.length);
-        }
+        addressToStakeIds[msg.sender].push(stakeholders.length);
         
         totalStakes += depositWithFee;
         stakeOf[msg.sender] += depositWithFee;
@@ -116,10 +112,14 @@ contract Vault is Ownable {
         emit Deposit(msg.sender, nextStakeholderId - 1, depositWithFee);
     }
 
-    function submitWithdrawal(uint _shares) external onlyStatusAbove(1) {
-        require(_shares > 0, "Shares > 0");
-        require(addressToStakeIds[msg.sender].length > 0, "User must be a staker");
-        require(_shares <= balanceOf[msg.sender], "Not enough shares");
+    function submitWithdrawal(uint _stakeId) external onlyStatusAbove(1) {
+        Stake storage staker = stakeholders[_stakeId - 1];
+        require(staker.id == _stakeId - 1, "stakeId does not exists");
+        require(staker.tillTime == 0, "stakeId is already processed");
+        require(staker.user == msg.sender, "stake does not belong to msg.sender");
+
+        staker.tillTime = block.timestamp;
+
         // If shares equal to all his/her shares, remove from stakeAddresses
         /*
             a = amount
@@ -131,11 +131,8 @@ contract Vault is Ownable {
 
             a = sB / T
         */
-        uint amount = (_shares * totalStakes) / totalSupply;
+        uint amount = (staker.shares * totalStakes) / totalSupply;
         require(amount <= stakeOf[msg.sender], 'Not enough stakedTokens');
-
-        // burn the shares 
-        _burnShares(msg.sender, _shares);
 
         // Remove staked tokens
         totalStakes -= amount;
@@ -145,13 +142,24 @@ contract Vault is Ownable {
         withdrawals.push( Withdrawal({
             id: nextWithdrawalID,
             user: msg.sender,
-            shares: _shares,
+            shares: staker.shares,
             amountInTokens: amount,
             end: block.timestamp + duration,
             sent: false
         }));
-        emit PendingWithdrawal(nextWithdrawalID, msg.sender, amount);
+        emit PendingWithdrawal(nextWithdrawalID, _stakeId - 1, msg.sender, amount);
         nextWithdrawalID += 1; // increment the nextWithdrawalID
+
+        // burn the shares 
+        require(staker.shares <= balanceOf[msg.sender], 'Not enough stakedTokens');
+        _burnShares(msg.sender, staker.shares);
+        
+         // If burning entire shares, remove from staker otherwise do nothing
+        if(balanceOf[msg.sender] == 0) {
+            delete addressToStakeIds[msg.sender];
+        } else {
+            removeStakeAddress(_stakeId);
+        }
         
     }
 
@@ -183,25 +191,18 @@ contract Vault is Ownable {
     }
 
     function _burnShares(address _from, uint _shares) private {
-         // If burning entire shares, remove from staker otherwise do nothing
-        if(_shares == balanceOf[_from]) {
-            uint index = addressToIndex[_from] - 1;
-            addressToIndex[_from] = 0;
-            removeStakeAddress(index);
-        }
         totalSupply -= _shares;
         balanceOf[_from] -= _shares;
     }
 
     function removeStakeAddress(uint _index) private {
-        // only left 1 staker or user is the latest staker
-        if(stakeholders.length == 1 || _index == stakeholders.length - 1) {
-            stakeholders.pop();
+        // only has 1 stake or stakeId is the last index
+        if(addressToStakeIds[msg.sender].length == 1 || _index == addressToStakeIds[msg.sender].length) {
+            addressToStakeIds[msg.sender].pop();
         } else {
-            uint lastIndex = stakeholders.length - 1;
-            addressToIndex[stakeholders[lastIndex]] = _index + 1;
-            stakeholders[_index] = stakeholders[lastIndex];
-            stakeholders.pop();
+            uint lastIndex = addressToStakeIds[msg.sender].length - 1;
+            addressToStakeIds[msg.sender][_index - 1] = addressToStakeIds[msg.sender][lastIndex]; // overwrite the position with a new value
+            addressToStakeIds[msg.sender].pop();
         }
         
     }
@@ -237,6 +238,10 @@ contract Vault is Ownable {
         return withdrawals.length;
     }
 
+    function addressToStakeArr(address _user) external view returns(uint[] memory) {
+        return addressToStakeIds[_user];
+    }
+
     function amtWithFee(FeeType feeType ,uint _amount) public view returns (uint) {
         if(feeType == FeeType.Farming) {
             return uint256((_amount * (100 - farmingFee)) / 100);
@@ -247,10 +252,20 @@ contract Vault is Ownable {
     }
 
     function isAddressExists(address _address) external view returns(bool isFound) {
-        uint length = stakeholders.length;
         isFound = false;
-        for(uint i = 0; i < length; i++) {
-            if(stakeholders[i] == _address) {
+        for(uint i = 0; i < stakeholders.length; i++) {
+            if(stakeholders[i].user == _address && stakeholders[i].tillTime == 0) {
+                isFound = true;
+                break;
+            }
+        }
+    }
+
+    function checkUserStakeId(address _user, uint _stakeId) external view returns(bool isFound) {
+        uint[] memory stakeArr = addressToStakeIds[_user];
+        isFound = false;
+        for(uint i = 0; i < stakeArr.length; i++) {
+            if(_stakeId == stakeArr[i]) {
                 isFound = true;
                 break;
             }
@@ -300,16 +315,16 @@ contract Vault is Ownable {
         }
     }
 
-    function allocateYieldTokens(address tokenAddr, uint tokenAmt) external onlyOwner {
-        require(tokenAddr != address(0) && tokenToIndex[tokenAddr] > 0, 'Address must be valid');
-        require(tokenAmt <= IERC20(tokenAddr).balanceOf(address(this)), 'Token not enough to allocate');
-        // Allocate tokens to stakedUsers
-        uint yieldPerShare = tokenAmt * PRECISION_FACTOR / totalSupply;
-        for(uint i = 0; i < stakeholders.length; i++) {
-            address userAddr = stakeholders[i];
-            uint userAlloc = (balanceOf[userAddr] * yieldPerShare) ;
-            userAlloc = amtWithFee(FeeType.Farming, userAlloc);
-            tokensOfUserBalance[tokenAddr][userAddr] = userAlloc / PRECISION_FACTOR;
-        }
-    }
+    // function allocateYieldTokens(address tokenAddr, uint tokenAmt) external onlyOwner {
+    //     require(tokenAddr != address(0) && tokenToIndex[tokenAddr] > 0, 'Address must be valid');
+    //     require(tokenAmt <= IERC20(tokenAddr).balanceOf(address(this)), 'Token not enough to allocate');
+    //     // Allocate tokens to stakedUsers
+    //     uint yieldPerShare = tokenAmt * PRECISION_FACTOR / totalSupply;
+    //     for(uint i = 0; i < stakeholders.length; i++) {
+    //         address userAddr = stakeholders[i];
+    //         uint userAlloc = (balanceOf[userAddr] * yieldPerShare) ;
+    //         userAlloc = amtWithFee(FeeType.Farming, userAlloc);
+    //         tokensOfUserBalance[tokenAddr][userAddr] = userAlloc / PRECISION_FACTOR;
+    //     }
+    // }
 }
