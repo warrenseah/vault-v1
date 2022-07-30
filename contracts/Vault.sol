@@ -192,6 +192,7 @@ contract Vault is Ownable {
     function claimYieldTokens(uint _stakeId, uint _yieldId) public onlyStatusAbove(1) {
         Yield memory yieldProgram = yields[_yieldId];
         Stake memory stake = stakeholders[_stakeId - 1];
+        require(stake.user == msg.sender, "caller must be staker");
         require(stake.tillTime == 0, "User must have stakes");
         require(yieldProgram.tillTime > 0, "Yield program must have ended.");
         require(yieldProgram.sinceTime > stake.sinceTime, "User must have staked before start of yieldProgram");
@@ -231,13 +232,13 @@ contract Vault is Ownable {
     }
 
     function getClaimedFor(uint _yieldId, uint _stakeId) public view returns(uint rewards) {
-        require(addressToStakeIds[msg.sender].length > 0, 'Address does not exists');
         Stake memory staker = stakeholders[_stakeId - 1];
+        require(addressToStakeIds[staker.user].length > 0, 'Address does not exists');
         require(staker.tillTime == 0, 'User must have tokens staked');
         require(staker.amountInTokens > 0, 'User does not stake tokens');
 
         Yield memory yieldProgram = yields[_yieldId];
-        require(yieldProgram.tillTime == 0, 'Yield program must have ended');
+        require(yieldProgram.tillTime > 0, 'Yield program must have ended');
         rewards = yieldProgram.yieldPerTokenStaked * staker.amountInTokens / PRECISION_FACTOR;
     }
 
