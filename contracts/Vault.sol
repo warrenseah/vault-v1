@@ -45,10 +45,22 @@ contract Vault is Ownable {
     uint public totalStakes;
     uint public nextStakeholderId = 0;
 
+    // Yield struct
+    struct Yield {
+        uint id;
+        uint amount;
+        uint sinceTime;
+        uint tillTime;
+        uint yieldPerTokenStaked; // multiply with PRECISION_FACTOR
+        uint totalStakeAtTime;
+        address token;
+    }
+
     // Token to stakedUsers records
-    address[] public yieldTokens;
-    mapping(address => uint16) public tokenToIndex; // need to subtract by 1 to get the true mapping
+    Yield[] public yieldTokens;
+    mapping(address => mapping(uint => bool)) public addressClaimedYieldRewards; 
     mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
+    uint nextYieldTokenId = 0;
 
     struct Withdrawal {
         uint id;
@@ -65,7 +77,8 @@ contract Vault is Ownable {
     event Deposit(address indexed user, uint indexed stakeId, uint amount);
     event PendingWithdrawal(uint indexed withdrawalID, uint indexed stakeId, address indexed user, uint amount);
     event Withdrawn(address indexed user, uint withdrawalID);
-    event ClaimedTokens(address indexed token, address indexed user, uint amount);
+    event YieldProgram(uint indexed _id, address indexed _token, uint _yieldPerTokenStakedPerSec, uint _sinceTime);
+    event ClaimedTokens(uint indexed yieldId, uint stakeId, address indexed token, address indexed user, uint amount);
 
     receive() external payable {}
 
@@ -176,12 +189,22 @@ contract Vault is Ownable {
         emit Withdrawn(msg.sender, _id);
     }
 
-    function claimYieldTokens(address tokenAddr) public onlyStatusAbove(1) {
-        uint tokenAmt = tokensOfUserBalance[tokenAddr][msg.sender];
-        require(tokenAmt > 0 && tokenAmt <= IERC20(tokenAddr).balanceOf(address(this)), "Token insufficient to withdraw");
-        tokensOfUserBalance[tokenAddr][msg.sender] = 0;
-        IERC20(tokenAddr).transfer(msg.sender, tokenAmt);
-        emit ClaimedTokens(tokenAddr, msg.sender, tokenAmt);
+    function claimYieldTokens(uint _stakeId, uint _yieldId) public onlyStatusAbove(1) {
+        Yield memory yieldProgram = yieldTokens[_yieldId];
+        Stake memory stake = stakeholders[_stakeId - 1];
+        require(stake.tillTime == 0, "User must have stakes");
+        require(yieldProgram.tillTime > 0, "Yield program must have ended.");
+        require(yieldProgram.sinceTime > stake.sinceTime, "User must have staked before start of yieldProgram");
+        require(!addressClaimedYieldRewards[msg.sender][_yieldId], "User must not claim rewards already");
+        
+        addressClaimedYieldRewards[msg.sender][_yieldId] = true;
+        
+        // Calculate rewards
+        uint rewards = yieldProgram.yieldPerTokenStaked * stake.amountInTokens / PRECISION_FACTOR;
+
+        require(rewards > 0 && rewards <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
+        IERC20(yieldProgram.token).transfer(msg.sender, rewards);
+        emit ClaimedTokens(yieldProgram.id, _stakeId - 1, yieldProgram.token, msg.sender, rewards);
     }
 
     // Private functions
@@ -207,12 +230,15 @@ contract Vault is Ownable {
         
     }
 
-    // divide by 10**10 to get %
-    function getAllocationFor(address _user) public view returns(uint) {
-        require(addressToStakeIds[_user].length > 0, 'Address does not exists');
-        require(balanceOf[_user] > 0, 'User does not stake tokens');
-        uint alloc = (balanceOf[_user] * PRECISION_FACTOR) / totalSupply ;
-        return alloc; 
+    function getClaimedFor(uint _yieldId, uint _stakeId) public view returns(uint rewards) {
+        require(addressToStakeIds[msg.sender].length > 0, 'Address does not exists');
+        Stake memory staker = stakeholders[_stakeId - 1];
+        require(staker.tillTime == 0, 'User must have tokens staked');
+        require(staker.amountInTokens > 0, 'User does not stake tokens');
+
+        Yield memory yieldProgram = yieldTokens[_yieldId];
+        require(yieldProgram.tillTime == 0, 'Yield program must have ended');
+        rewards = yieldProgram.yieldPerTokenStaked * staker.amountInTokens / PRECISION_FACTOR;
     }
 
     // Modifier
@@ -300,31 +326,44 @@ contract Vault is Ownable {
         require(success, 'Return bnb failed');
     }
 
-    function addYieldTokens(address tokenAddr, uint _deposit) external onlyOwner {
-        require(tokenAddr != address(0), 'Address must be valid');
-        // check if token exists
-        uint16 tokenIndex = tokenToIndex[tokenAddr];
-        if(tokenIndex == 0) {
-            // token does not exists, add to yieldToken stack
-            yieldTokens.push(tokenAddr);
-            tokenToIndex[tokenAddr] = uint16(yieldTokens.length);
-        } 
+    function addYieldTokens(uint _sinceTime, uint _totalStake) external onlyOwner {
+        
+        yieldTokens.push(Yield({
+            id: nextYieldTokenId,
+            amount: 0,
+            sinceTime: _sinceTime,
+            tillTime: 0,
+            yieldPerTokenStaked: 0,
+            totalStakeAtTime: _totalStake,
+            token: address(0)
+        }));
 
-        if(_deposit > 0) {
-            IERC20(tokenAddr).transferFrom(owner(), address(this), _deposit);
-        }
+        nextYieldTokenId += 1;
     }
 
-    // function allocateYieldTokens(address tokenAddr, uint tokenAmt) external onlyOwner {
-    //     require(tokenAddr != address(0) && tokenToIndex[tokenAddr] > 0, 'Address must be valid');
-    //     require(tokenAmt <= IERC20(tokenAddr).balanceOf(address(this)), 'Token not enough to allocate');
-    //     // Allocate tokens to stakedUsers
-    //     uint yieldPerShare = tokenAmt * PRECISION_FACTOR / totalSupply;
-    //     for(uint i = 0; i < stakeholders.length; i++) {
-    //         address userAddr = stakeholders[i];
-    //         uint userAlloc = (balanceOf[userAddr] * yieldPerShare) ;
-    //         userAlloc = amtWithFee(FeeType.Farming, userAlloc);
-    //         tokensOfUserBalance[tokenAddr][userAddr] = userAlloc / PRECISION_FACTOR;
-    //     }
-    // }
+    function amendYieldTokens(uint _id, address tokenAddr, uint _deposit, uint _sinceTime, uint _tillTime) external onlyOwner {
+        Yield storage yield = yieldTokens[_id];
+        require(yield.tillTime == 0, "Yield program has ended");
+        require(tokenAddr != address(0), "token address cannot be 0");
+
+        if(_tillTime != 0) {
+            // yield program has ended
+            yield.tillTime = _tillTime;
+        }
+
+        if(_sinceTime != 0) {
+            yield.sinceTime = _sinceTime;
+        }
+        
+        yield.token = tokenAddr;
+
+        if(_deposit > 0) {
+            yield.amount = _deposit;
+            IERC20(tokenAddr).transferFrom(owner(), address(this), _deposit);
+
+            // Calculate yield metrics
+            yield.yieldPerTokenStaked = _deposit * PRECISION_FACTOR / yield.totalStakeAtTime;
+            emit YieldProgram(yield.id, yield.token, yield.yieldPerTokenStaked, yield.sinceTime);
+        }
+    }
 }
