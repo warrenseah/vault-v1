@@ -57,7 +57,7 @@ contract Vault is Ownable {
     }
 
     // Token to stakedUsers records
-    Yield[] public yieldTokens;
+    Yield[] public yields;
     mapping(address => mapping(uint => bool)) public addressClaimedYieldRewards; 
     mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
     uint public nextYieldProgramId = 0;
@@ -190,7 +190,7 @@ contract Vault is Ownable {
     }
 
     function claimYieldTokens(uint _stakeId, uint _yieldId) public onlyStatusAbove(1) {
-        Yield memory yieldProgram = yieldTokens[_yieldId];
+        Yield memory yieldProgram = yields[_yieldId];
         Stake memory stake = stakeholders[_stakeId - 1];
         require(stake.tillTime == 0, "User must have stakes");
         require(yieldProgram.tillTime > 0, "Yield program must have ended.");
@@ -236,7 +236,7 @@ contract Vault is Ownable {
         require(staker.tillTime == 0, 'User must have tokens staked');
         require(staker.amountInTokens > 0, 'User does not stake tokens');
 
-        Yield memory yieldProgram = yieldTokens[_yieldId];
+        Yield memory yieldProgram = yields[_yieldId];
         require(yieldProgram.tillTime == 0, 'Yield program must have ended');
         rewards = yieldProgram.yieldPerTokenStaked * staker.amountInTokens / PRECISION_FACTOR;
     }
@@ -257,7 +257,7 @@ contract Vault is Ownable {
     }
 
     function yieldTokensLength() external view returns(uint) {
-        return yieldTokens.length;
+        return yields.length;
     }
 
     function withdrawalLength() external view returns(uint) {
@@ -328,7 +328,7 @@ contract Vault is Ownable {
 
     function addYieldTokens(uint _sinceTime, uint _totalStake) external onlyOwner {
         
-        yieldTokens.push(Yield({
+        yields.push(Yield({
             id: nextYieldProgramId,
             amount: 0,
             sinceTime: _sinceTime,
@@ -342,7 +342,7 @@ contract Vault is Ownable {
     }
 
     function amendYieldTokens(uint _id, address tokenAddr, uint _deposit, uint _sinceTime, uint _tillTime) external onlyOwner {
-        Yield storage yield = yieldTokens[_id];
+        Yield storage yield = yields[_id];
         require(yield.tillTime == 0, "Yield program has ended");
         require(tokenAddr != address(0), "token address cannot be 0");
 
