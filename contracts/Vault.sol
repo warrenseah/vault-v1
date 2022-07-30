@@ -24,6 +24,8 @@ contract Vault is Ownable {
     uint public constant PRECISION_FACTOR = 10 ** 12;
     uint public duration = 1 minutes;
     uint public nextWithdrawalID = 0;
+    uint public profits;
+    mapping(address => uint) public profitsInToken;
     
     // Vault shares
     uint public totalSupply;
@@ -86,6 +88,9 @@ contract Vault is Ownable {
     function deposit() public payable onlyStatusAbove(2) {
         require(msg.value > 0, "Amount > 0");
         uint depositWithFee = amtWithFee(FeeType.Entry, msg.value);
+
+        // register profit
+        profits += feeToProtocol(FeeType.Entry, msg.value);
         
         /* Determine amount of shares to mint
         a = amount
@@ -202,9 +207,11 @@ contract Vault is Ownable {
         
         // Calculate rewards
         uint rewards = yieldProgram.yieldPerTokenStaked * stake.amountInTokens / PRECISION_FACTOR;
+        uint rewardsAfterFee = amtWithFee(FeeType.Farming, rewards);
+        profitsInToken[yieldProgram.token] += feeToProtocol(FeeType.Farming, rewards);
 
-        require(rewards > 0 && rewards <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
-        IERC20(yieldProgram.token).transfer(msg.sender, rewards);
+        require(rewardsAfterFee > 0 && rewardsAfterFee <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
+        IERC20(yieldProgram.token).transfer(msg.sender, rewardsAfterFee);
         emit ClaimedTokens(yieldProgram.id, _stakeId - 1, yieldProgram.token, msg.sender, rewards);
     }
 
@@ -274,8 +281,15 @@ contract Vault is Ownable {
             return uint256((_amount * (100 - farmingFee)) / 100);
         } else {
             return uint256((_amount * (100 - entryFee)) / 100);
+        }   
+    }
+
+    function feeToProtocol(FeeType feeType, uint _amount) public view returns(uint) {
+        if(feeType == FeeType.Farming) {
+            return uint256((_amount * farmingFee) / 100);
+        } else {
+            return uint256((_amount * entryFee) / 100);
         }
-        
     }
 
     function isAddressExists(address _address) external view returns(bool isFound) {
