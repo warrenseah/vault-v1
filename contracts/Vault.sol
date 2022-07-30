@@ -256,7 +256,7 @@ contract Vault is Ownable {
         return stakeholders.length;
     }
 
-    function yieldTokensLength() external view returns(uint) {
+    function yieldsLength() external view returns(uint) {
         return yields.length;
     }
 
