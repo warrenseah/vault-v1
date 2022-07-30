@@ -60,7 +60,7 @@ contract Vault is Ownable {
     Yield[] public yieldTokens;
     mapping(address => mapping(uint => bool)) public addressClaimedYieldRewards; 
     mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
-    uint nextYieldTokenId = 0;
+    uint public nextYieldProgramId = 0;
 
     struct Withdrawal {
         uint id;
@@ -329,7 +329,7 @@ contract Vault is Ownable {
     function addYieldTokens(uint _sinceTime, uint _totalStake) external onlyOwner {
         
         yieldTokens.push(Yield({
-            id: nextYieldTokenId,
+            id: nextYieldProgramId,
             amount: 0,
             sinceTime: _sinceTime,
             tillTime: 0,
@@ -338,7 +338,7 @@ contract Vault is Ownable {
             token: address(0)
         }));
 
-        nextYieldTokenId += 1;
+        nextYieldProgramId += 1;
     }
 
     function amendYieldTokens(uint _id, address tokenAddr, uint _deposit, uint _sinceTime, uint _tillTime) external onlyOwner {
