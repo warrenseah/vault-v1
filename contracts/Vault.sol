@@ -24,8 +24,8 @@ contract Vault is Ownable {
     uint public constant PRECISION_FACTOR = 10 ** 12;
     uint public duration = 1 minutes;
     uint public nextWithdrawalID = 0;
-    uint public profits;
-    mapping(address => uint) public profitsInToken;
+    uint public profits; // bnb profits for admin
+    mapping(address => uint) public profitsInToken; // altcoins profits for admin
     
     // Vault shares
     uint public totalSupply;
@@ -79,7 +79,7 @@ contract Vault is Ownable {
     event Deposit(address indexed user, uint indexed stakeId, uint amount);
     event PendingWithdrawal(uint indexed withdrawalID, uint indexed stakeId, address indexed user, uint amount);
     event Withdrawn(address indexed user, uint withdrawalID);
-    event YieldProgram(uint indexed _id, address indexed _token, uint _yieldPerTokenStakedPerSec, uint _sinceTime);
+    event YieldEnded(uint indexed _id, address indexed _token, uint _yieldPerTokenStakedPerSec, uint _sinceTime);
     event ClaimedTokens(uint indexed yieldId, uint stakeId, address indexed token, address indexed user, uint amount);
 
     receive() external payable {}
@@ -212,7 +212,7 @@ contract Vault is Ownable {
 
         require(rewardsAfterFee > 0 && rewardsAfterFee <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
         IERC20(yieldProgram.token).transfer(msg.sender, rewardsAfterFee);
-        emit ClaimedTokens(yieldProgram.id, _stakeId - 1, yieldProgram.token, msg.sender, rewards);
+        emit ClaimedTokens(yieldProgram.id, _stakeId - 1, yieldProgram.token, msg.sender, rewardsAfterFee);
     }
 
     // Private functions
@@ -378,7 +378,7 @@ contract Vault is Ownable {
 
             // Calculate yield metrics
             yield.yieldPerTokenStaked = _deposit * PRECISION_FACTOR / yield.totalStakeAtTime;
-            emit YieldProgram(yield.id, yield.token, yield.yieldPerTokenStaked, yield.sinceTime);
+            emit YieldEnded(yield.id, yield.token, yield.yieldPerTokenStaked, yield.sinceTime);
         }
     }
 }
