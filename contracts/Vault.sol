@@ -60,7 +60,7 @@ contract Vault is Ownable {
 
     // Token to stakedUsers records
     Yield[] public yields;
-    mapping(address => mapping(uint => bool)) public addressClaimedYieldRewards; 
+    mapping(address => mapping(uint => mapping(uint => bool))) public addressClaimedYieldRewards; // 1st uint _yieldId 2nd _stakeId
     mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
     uint public nextYieldProgramId = 0;
 
@@ -131,6 +131,7 @@ contract Vault is Ownable {
     }
 
     function submitWithdrawal(uint _stakeId) external onlyStatusAbove(1) {
+        require(_stakeId > 0, 'stakeId cannot be 0');
         Stake storage staker = stakeholders[_stakeId - 1];
         require(staker.id == _stakeId - 1, "stakeId does not exists");
         require(staker.tillTime == 0, "stakeId is already processed");
@@ -195,15 +196,19 @@ contract Vault is Ownable {
     }
 
     function claimYieldTokens(uint _stakeId, uint _yieldId) public onlyStatusAbove(1) {
+        
         Yield memory yieldProgram = yields[_yieldId];
         Stake memory stake = stakeholders[_stakeId - 1];
+
+        require(_stakeId > 0, 'stakeId cannot be 0');
+        require(checkUserStakeId(msg.sender, _stakeId), 'stakeId must belong to caller');
         require(stake.user == msg.sender, "caller must be staker");
         require(stake.tillTime == 0, "User must have stakes");
         require(yieldProgram.tillTime > 0, "Yield program must have ended.");
         require(yieldProgram.sinceTime > stake.sinceTime, "User must have staked before start of yieldProgram");
-        require(!addressClaimedYieldRewards[msg.sender][_yieldId], "User must not claim rewards already");
+        require(!addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId], "User must not claim rewards already"); 
         
-        addressClaimedYieldRewards[msg.sender][_yieldId] = true;
+        addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId] = true; 
         
         // Calculate rewards
         uint rewards = yieldProgram.yieldPerTokenStaked * stake.amountInTokens / PRECISION_FACTOR;
@@ -213,6 +218,9 @@ contract Vault is Ownable {
         require(rewardsAfterFee > 0 && rewardsAfterFee <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
         IERC20(yieldProgram.token).transfer(msg.sender, rewardsAfterFee);
         emit ClaimedTokens(yieldProgram.id, _stakeId - 1, yieldProgram.token, msg.sender, rewardsAfterFee);
+        
+        // Register user claimed tokens
+        tokensOfUserBalance[yieldProgram.token][msg.sender] = rewardsAfterFee;
     }
 
     // Private functions
@@ -238,15 +246,20 @@ contract Vault is Ownable {
         
     }
 
-    function getClaimedFor(uint _yieldId, uint _stakeId) public view returns(uint rewards) {
-        Stake memory staker = stakeholders[_stakeId - 1];
-        require(addressToStakeIds[staker.user].length > 0, 'Address does not exists');
-        require(staker.tillTime == 0, 'User must have tokens staked');
-        require(staker.amountInTokens > 0, 'User does not stake tokens');
+    function amtWithFee(FeeType feeType ,uint _amount) private view returns (uint) {
+        if(feeType == FeeType.Farming) {
+            return uint256((_amount * (100 - farmingFee)) / 100);
+        } else {
+            return uint256((_amount * (100 - entryFee)) / 100);
+        }   
+    }
 
-        Yield memory yieldProgram = yields[_yieldId];
-        require(yieldProgram.tillTime > 0, 'Yield program must have ended');
-        rewards = yieldProgram.yieldPerTokenStaked * staker.amountInTokens / PRECISION_FACTOR;
+    function feeToProtocol(FeeType feeType, uint _amount) private view returns(uint) {
+        if(feeType == FeeType.Farming) {
+            return uint256((_amount * farmingFee) / 100);
+        } else {
+            return uint256((_amount * entryFee) / 100);
+        }
     }
 
     // Modifier
@@ -276,23 +289,18 @@ contract Vault is Ownable {
         return addressToStakeIds[_user];
     }
 
-    function amtWithFee(FeeType feeType ,uint _amount) public view returns (uint) {
-        if(feeType == FeeType.Farming) {
-            return uint256((_amount * (100 - farmingFee)) / 100);
-        } else {
-            return uint256((_amount * (100 - entryFee)) / 100);
-        }   
-    }
-
-    function feeToProtocol(FeeType feeType, uint _amount) public view returns(uint) {
-        if(feeType == FeeType.Farming) {
-            return uint256((_amount * farmingFee) / 100);
-        } else {
-            return uint256((_amount * entryFee) / 100);
+    function checkUserStakeId(address _user, uint _stakeId) public view returns(bool isFound) {
+        uint[] memory stakeArr = addressToStakeIds[_user];
+        isFound = false;
+        for(uint i = 0; i < stakeArr.length; i++) {
+            if(stakeArr[i] == _stakeId - 1) {
+                isFound = true;
+                break;
+            }
         }
     }
 
-    function isAddressExists(address _address) external view returns(bool isFound) {
+    function ifStakerExists(address _address) public view returns(bool isFound) {
         isFound = false;
         for(uint i = 0; i < stakeholders.length; i++) {
             if(stakeholders[i].user == _address && stakeholders[i].tillTime == 0) {
@@ -302,15 +310,22 @@ contract Vault is Ownable {
         }
     }
 
-    function checkUserStakeId(address _user, uint _stakeId) external view returns(bool isFound) {
-        uint[] memory stakeArr = addressToStakeIds[_user];
-        isFound = false;
-        for(uint i = 0; i < stakeArr.length; i++) {
-            if(_stakeId == stakeArr[i]) {
-                isFound = true;
-                break;
-            }
+    function getClaimsFor(uint _stakeId, uint _yieldId) public view returns(uint, uint) {
+        require(_stakeId > 0, 'stakeId cannot be 0');
+        Stake memory staker = stakeholders[_stakeId - 1];
+        require(checkUserStakeId(msg.sender, _stakeId), 'stakeId must belong to caller');
+        require(staker.tillTime == 0, 'User must have tokens staked');
+        require(staker.amountInTokens > 0, 'User does not stake tokens');
+
+        if(addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId]) {
+            return(0, 0);
         }
+
+        Yield memory yieldProgram = yields[_yieldId];
+        require(yieldProgram.tillTime > 0, 'Yield program must have ended');
+        uint rewards = yieldProgram.yieldPerTokenStaked * staker.amountInTokens / PRECISION_FACTOR;
+        uint rewardsAfterFee = amtWithFee(FeeType.Farming, rewards);
+        return (rewards, rewardsAfterFee);
     }
 
     // Owner's only
@@ -358,26 +373,30 @@ contract Vault is Ownable {
 
     function amendYieldTokens(uint _id, address tokenAddr, uint _deposit, uint _sinceTime, uint _tillTime) external onlyOwner {
         Yield storage yield = yields[_id];
+        require(yield.totalStakeAtTime > 0, "No stake for programme");
         require(yield.tillTime == 0, "Yield program has ended");
-        require(tokenAddr != address(0), "token address cannot be 0");
 
-        if(_tillTime != 0) {
-            // yield program has ended
-            yield.tillTime = _tillTime;
-        }
-
+        // Either change sinceTime
         if(_sinceTime != 0) {
             yield.sinceTime = _sinceTime;
         }
-        
-        yield.token = tokenAddr;
 
-        if(_deposit > 0) {
+        // Or add tillTime and end yield program
+
+        if(_tillTime != 0 && _deposit > 0) {
+            // yield program has ended
+            yield.tillTime = _tillTime;
+            require(yield.tillTime > yield.sinceTime, "End time must be greater than startTime");
+            require(tokenAddr != address(0), "token address cannot be 0");
+            
+            // Transfer token to contract
+            yield.token = tokenAddr;
             yield.amount = _deposit;
             IERC20(tokenAddr).transferFrom(owner(), address(this), _deposit);
 
             // Calculate yield metrics
             yield.yieldPerTokenStaked = _deposit * PRECISION_FACTOR / yield.totalStakeAtTime;
+            // Emit end of yield program
             emit YieldEnded(yield.id, yield.token, yield.yieldPerTokenStaked, yield.sinceTime);
         }
     }
