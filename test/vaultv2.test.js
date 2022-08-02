@@ -89,17 +89,17 @@ describe("Vault ContractV2 Test", function () {
         0,
         "nextWithdrawalID is not the same"
       );
-      expect(await vault.nextStakeholderId()).to.equal(
+      expect(await vault.nextStakesId()).to.equal(
         0,
-        "nextStakeholderId is not the same"
+        "nextStakesId is not the same"
       );
-      expect(await vault.nextYieldProgramId()).to.equal(
+      expect(await vault.nextYieldId()).to.equal(
         0,
-        "nextYieldProgramId is not the same"
+        "nextYieldId is not the same"
       );
-      expect(await vault.stakeholdersLength()).to.equal(
+      expect(await vault.stakesLength()).to.equal(
         0,
-        "stakeholdersLength is not the same"
+        "stakesLength is not the same"
       );
       expect(await vault.yieldsLength()).to.equal(
         0,
@@ -111,6 +111,7 @@ describe("Vault ContractV2 Test", function () {
       );
     });
   });
+
   describe("Global state variables functionality", function () {
     // Local change variables
     const entryFee = 3;
@@ -138,6 +139,7 @@ describe("Vault ContractV2 Test", function () {
 
       await vaultSign.changeFee(0, entryFee); // change entryFee
       await vaultSign.changeFee(1, farmingFee); // change farmingFee
+
       expect(await vault.entryFee()).to.equal(
         entryFee,
         "entryFee did not change"
@@ -153,9 +155,11 @@ describe("Vault ContractV2 Test", function () {
         0,
         "contractStatus is not default setting"
       );
+
       await expect(vaultSign.changeStatus(status))
         .to.emit(vaultSign, "StatusChanged")
         .withArgs(status);
+
       expect(await vault.contractStatus()).to.equal(
         status,
         "contractStatus did not change"
@@ -167,6 +171,7 @@ describe("Vault ContractV2 Test", function () {
         60,
         "duration is not default setting"
       );
+
       await vaultSign.changeDuration(duration);
       expect(await vault.duration()).to.equal(
         duration,
@@ -203,9 +208,9 @@ describe("Vault ContractV2 Test", function () {
         expect(await vault.stakeOf(wallet1.address)).to.equal(depositWithFee, 'Deposit balance is not equal');
         expect(await vault.totalSupply()).to.equal(depositWithFee, 'totalSupply is not equal to minted shares');
         expect(await vault.totalStakes()).to.equal(depositWithFee, 'totalStakes is not equal to staked tokens');
-        expect(await vault.nextStakeholderId()).to.equal(1, 'nextStakeholderId should increment 1');
+        expect(await vault.nextStakesId()).to.equal(1, 'nextStakesId should increment 1');
         
-        const staker = await vault.stakeholders(0);
+        const staker = await vault.stakes(0);
         expect(staker.id).to.equal(0, "stake index must be 0");
         expect(staker.user).to.equal(wallet1.address, 'staker is not wallet1');
         expect(staker.shares).to.equal(depositWithFee, 'shares is not reflecting minted shares');
@@ -220,7 +225,7 @@ describe("Vault ContractV2 Test", function () {
 
         await expect(vaultWallet2.deposit({ value: deposit1 })).to.changeEtherBalance(wallet2, '-1000000000000000000');
         expect(await vault.stakeOf(wallet2.address)).to.equal(depositWithFee, 'Deposit balance is not equal');
-        expect(await vault.nextStakeholderId()).to.equal(2, 'nextStakeholderId should increment 1');
+        expect(await vault.nextStakesId()).to.equal(2, 'nextStakesId should increment 1');
       });
     });
 
