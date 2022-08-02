@@ -203,7 +203,6 @@ contract Vault is Ownable {
 
         require(_stakeId > 0, 'stakeId cannot be 0');
         require(checkUserStakeId(msg.sender, _stakeId), 'stakeId must belong to caller');
-        require(stake.user == msg.sender, "caller must be staker");
         require(stake.tillTime == 0, "User must have stakes");
         require(yieldProgram.tillTime > 0, "Yield program must have ended.");
         require(yieldProgram.sinceTime > stake.sinceTime, "User must have staked before start of yieldProgram");
@@ -293,7 +292,7 @@ contract Vault is Ownable {
         uint[] memory stakeArr = addressToStakeIds[_user];
         isFound = false;
         for(uint i = 0; i < stakeArr.length; i++) {
-            if(stakeArr[i] == _stakeId - 1) {
+            if(stakeArr[i] == _stakeId) {
                 isFound = true;
                 break;
             }
