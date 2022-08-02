@@ -74,6 +74,7 @@ contract Vault is Ownable {
     }
 
     Withdrawal[] public withdrawals;
+    mapping(address => uint[]) public addressToWithdrawalIds; // need to subtract by 1 to get the true mapping
 
     event StatusChanged(StatusType indexed _type);
     event Deposit(address indexed user, uint indexed stakeId, uint amount);
@@ -136,7 +137,7 @@ contract Vault is Ownable {
         Stake storage staker = stakes[_stakeId - 1];
         require(staker.id == _stakeId - 1, "stakeId does not exists");
         require(staker.tillTime == 0, "stakeId is already processed");
-        require(staker.user == msg.sender, "stake does not belong to msg.sender");
+        require(staker.user == msg.sender, "stake does not belong to caller");
 
         staker.tillTime = block.timestamp;
 
@@ -170,6 +171,8 @@ contract Vault is Ownable {
         emit PendingWithdrawal(nextWithdrawalID, _stakeId - 1, msg.sender, amount);
         nextWithdrawalID += 1; // increment the nextWithdrawalID
 
+        addressToWithdrawalIds[msg.sender].push(withdrawals.length);
+
         // burn the shares 
         require(staker.shares <= balanceOf[msg.sender], 'Not enough stakedTokens');
         _burnShares(msg.sender, staker.shares);
@@ -184,16 +187,18 @@ contract Vault is Ownable {
     }
 
     function withdraw(uint _id) external onlyStatusAbove(1) {
-        Withdrawal storage staker = withdrawals[_id];
-        require(staker.user == msg.sender, "Withdrawal must be staker");
+        require(checkUserWithdrawalId(msg.sender, _id), "Withdrawal must submit withdrawal request");
+        Withdrawal storage staker = withdrawals[_id - 1];
         require(staker.sent == false, "Withdraw processed already");
         require(block.timestamp > staker.end, "Timelock is active");
         require(staker.amountInTokens <= address(this).balance, 'BNB balance not enough');
 
         staker.sent = true;
         (bool success, ) = payable(msg.sender).call{value: staker.amountInTokens}("");
-        require(success, 'BNB return failed');
+        require(success, "BNB return failed");
         emit Withdrawn(msg.sender, _id);
+
+        removeWithdrawalIndexFromArray(_id);
     }
 
     function claimYieldTokens(uint _stakeId, uint _yieldId) public onlyStatusAbove(1) {
@@ -202,11 +207,10 @@ contract Vault is Ownable {
         Stake memory stake = stakes[_stakeId - 1];
 
         require(_stakeId > 0, 'stakeId cannot be 0');
+        require(!addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId], "User must not claim rewards already"); 
         require(checkUserStakeId(msg.sender, _stakeId), 'stakeId must belong to caller');
-        require(stake.tillTime == 0, "User must have stakes");
         require(yieldProgram.tillTime > 0, "Yield program must have ended.");
         require(yieldProgram.sinceTime > stake.sinceTime, "User must have staked before start of yieldProgram");
-        require(!addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId], "User must not claim rewards already"); 
         
         addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId] = true; 
         
@@ -242,6 +246,17 @@ contract Vault is Ownable {
             uint lastIndex = addressToStakeIds[msg.sender].length - 1;
             addressToStakeIds[msg.sender][_index - 1] = addressToStakeIds[msg.sender][lastIndex]; // overwrite the position with a new value
             addressToStakeIds[msg.sender].pop();
+        }
+    }
+
+    function removeWithdrawalIndexFromArray(uint _index) private {
+        // only has 1 stake or stakeId is the last index
+        if(addressToWithdrawalIds[msg.sender].length == 1 || _index == addressToWithdrawalIds[msg.sender].length) {
+            addressToWithdrawalIds[msg.sender].pop();
+        } else {
+            uint lastIndex = addressToWithdrawalIds[msg.sender].length - 1;
+            addressToWithdrawalIds[msg.sender][_index - 1] = addressToWithdrawalIds[msg.sender][lastIndex]; // overwrite the position with a new value
+            addressToWithdrawalIds[msg.sender].pop();
         }
     }
 
@@ -287,12 +302,27 @@ contract Vault is Ownable {
     function addressToStakeArr(address _user) external view returns(uint[] memory) {
         return addressToStakeIds[_user];
     }
+    
+    function addressToWithdrawArr(address _user) external view returns(uint[] memory) {
+        return addressToWithdrawalIds[_user];
+    }
 
     function checkUserStakeId(address _user, uint _stakeId) public view returns(bool isFound) {
         uint[] memory stakeArr = addressToStakeIds[_user];
         isFound = false;
         for(uint i = 0; i < stakeArr.length; i++) {
             if(stakeArr[i] == _stakeId) {
+                isFound = true;
+                break;
+            }
+        }
+    }
+
+    function checkUserWithdrawalId(address _user, uint _withdrawalId) public view returns(bool isFound) {
+        uint[] memory withdrawalArr = addressToWithdrawalIds[_user];
+        isFound = false;
+        for(uint i = 0; i < withdrawalArr.length; i++) {
+            if(withdrawalArr[i] == _withdrawalId) {
                 isFound = true;
                 break;
             }
@@ -332,7 +362,7 @@ contract Vault is Ownable {
         uint index = 0;
         for(uint i = 0; i < stakes.length; i++) {
             if(stakes[i].user == _address && stakes[i].tillTime > 0) {
-                stakesArr[index] = stakes[i].id;
+                stakesArr[index] = stakes[i].id + 1;
                 index += 1;
             }
         }
