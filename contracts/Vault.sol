@@ -31,7 +31,7 @@ contract Vault is Ownable {
     uint public totalSupply;
     mapping(address => uint) public balanceOf;
 
-    // Stakeholder token
+    // Stake
     struct Stake {
         uint id;
         address user;
@@ -45,7 +45,7 @@ contract Vault is Ownable {
     mapping(address => uint[]) public addressToStakeIds; // need to subtract by 1 to get the true mapping
     mapping(address => uint) public stakeOf;
     uint public totalStakes;
-    uint public nextStakeholderId = 0;
+    uint public nextStakesId = 0;
 
     // Yield struct
     struct Yield {
@@ -62,7 +62,7 @@ contract Vault is Ownable {
     Yield[] public yields;
     mapping(address => mapping(uint => mapping(uint => bool))) public addressClaimedYieldRewards; // 1st uint _yieldId 2nd _stakeId
     mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
-    uint public nextYieldProgramId = 0;
+    uint public nextYieldId = 0;
 
     struct Withdrawal {
         uint id;
@@ -111,7 +111,7 @@ contract Vault is Ownable {
         }
 
         stakes.push(Stake({
-            id: nextStakeholderId,
+            id: nextStakesId,
             user: msg.sender,
             amountInTokens: depositWithFee,
             shares: shares,
@@ -119,7 +119,8 @@ contract Vault is Ownable {
             tillTime: 0
         }));
 
-        nextStakeholderId += 1;
+        emit Deposit(msg.sender, nextStakesId, depositWithFee);
+        nextStakesId += 1;
         _mintShares(msg.sender, shares);
 
         // Update addressToStakeIds
@@ -128,7 +129,6 @@ contract Vault is Ownable {
         totalStakes += depositWithFee;
         stakeOf[msg.sender] += depositWithFee;
 
-        emit Deposit(msg.sender, nextStakeholderId - 1, depositWithFee);
     }
 
     function submitWithdrawal(uint _stakeId) external onlyStatusAbove(1) {
@@ -273,7 +273,7 @@ contract Vault is Ownable {
         return address(this).balance;
     }
 
-    function stakeholdersLength() external view returns(uint) {
+    function stakesLength() external view returns(uint) {
         return stakes.length;
     }
 
@@ -390,7 +390,7 @@ contract Vault is Ownable {
     function addYieldTokens(uint _sinceTime, uint _totalStake) external onlyOwner {
         
         yields.push(Yield({
-            id: nextYieldProgramId,
+            id: nextYieldId,
             amount: 0,
             sinceTime: _sinceTime,
             tillTime: 0,
@@ -399,7 +399,7 @@ contract Vault is Ownable {
             token: address(0)
         }));
 
-        nextYieldProgramId += 1;
+        nextYieldId += 1;
     }
 
     function amendYieldTokens(uint _id, address tokenAddr, uint _deposit, uint _sinceTime, uint _tillTime) external onlyOwner {
