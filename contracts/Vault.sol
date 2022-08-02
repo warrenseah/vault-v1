@@ -81,6 +81,7 @@ contract Vault is Ownable {
     event Withdrawn(address indexed user, uint withdrawalID);
     event YieldEnded(uint indexed _id, address indexed _token, uint _yieldPerTokenStakedPerSec, uint _sinceTime);
     event ClaimedTokens(uint indexed yieldId, uint stakeId, address indexed token, address indexed user, uint amount);
+    event ProfitWithdraw(FeeType _type, uint _amount, address _token);
 
     receive() external payable {}
 
@@ -355,6 +356,25 @@ contract Vault is Ownable {
 
     function changeDuration(uint _seconds) external onlyOwner {
         duration = _seconds;
+    }
+
+    function withdrawProfits() external onlyOwner {
+        require(profits > 0, 'Not enough gasToken to withdraw');
+        uint withdrawAmt = profits;
+        profits = 0;
+        (bool success, ) = payable(msg.sender).call{ value: withdrawAmt }("");
+        emit ProfitWithdraw(FeeType.Entry, withdrawAmt, address(0));
+        require(success, "BNB Profits withdrawal failed");
+    }
+
+    function withdrawTokenProfits(address _token) external onlyOwner {
+        require(profitsInToken[_token] > 0, 'Not enough tokens to withdraw');
+        uint withdrawAmt = profitsInToken[_token];
+        profitsInToken[_token] = 0;
+        IERC20 token = IERC20(_token);
+        require(withdrawAmt <= token.balanceOf(address(this)), 'Not enough token to send');
+        token.transfer(msg.sender, withdrawAmt);
+        emit ProfitWithdraw(FeeType.Farming, withdrawAmt, _token);
     }
 
     function withdrawTokensToOwner(IERC20 token, uint _amount) external onlyOwner {
