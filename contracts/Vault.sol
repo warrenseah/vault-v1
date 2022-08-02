@@ -41,7 +41,7 @@ contract Vault is Ownable {
         uint tillTime;
     }
     
-    Stake[] public stakeholders;
+    Stake[] public stakes;
     mapping(address => uint[]) public addressToStakeIds; // need to subtract by 1 to get the true mapping
     mapping(address => uint) public stakeOf;
     uint public totalStakes;
@@ -109,7 +109,7 @@ contract Vault is Ownable {
             shares = (depositWithFee * totalSupply) / totalStakes;
         }
 
-        stakeholders.push(Stake({
+        stakes.push(Stake({
             id: nextStakeholderId,
             user: msg.sender,
             amountInTokens: depositWithFee,
@@ -122,7 +122,7 @@ contract Vault is Ownable {
         _mintShares(msg.sender, shares);
 
         // Update addressToStakeIds
-        addressToStakeIds[msg.sender].push(stakeholders.length);
+        addressToStakeIds[msg.sender].push(stakes.length);
         
         totalStakes += depositWithFee;
         stakeOf[msg.sender] += depositWithFee;
@@ -132,7 +132,7 @@ contract Vault is Ownable {
 
     function submitWithdrawal(uint _stakeId) external onlyStatusAbove(1) {
         require(_stakeId > 0, 'stakeId cannot be 0');
-        Stake storage staker = stakeholders[_stakeId - 1];
+        Stake storage staker = stakes[_stakeId - 1];
         require(staker.id == _stakeId - 1, "stakeId does not exists");
         require(staker.tillTime == 0, "stakeId is already processed");
         require(staker.user == msg.sender, "stake does not belong to msg.sender");
@@ -177,7 +177,7 @@ contract Vault is Ownable {
         if(balanceOf[msg.sender] == 0) {
             delete addressToStakeIds[msg.sender];
         } else {
-            removeStakeAddress(_stakeId);
+            removeStakeIndexFromArray(_stakeId);
         }
         
     }
@@ -198,7 +198,7 @@ contract Vault is Ownable {
     function claimYieldTokens(uint _stakeId, uint _yieldId) public onlyStatusAbove(1) {
         
         Yield memory yieldProgram = yields[_yieldId];
-        Stake memory stake = stakeholders[_stakeId - 1];
+        Stake memory stake = stakes[_stakeId - 1];
 
         require(_stakeId > 0, 'stakeId cannot be 0');
         require(checkUserStakeId(msg.sender, _stakeId), 'stakeId must belong to caller');
@@ -234,7 +234,7 @@ contract Vault is Ownable {
         balanceOf[_from] -= _shares;
     }
 
-    function removeStakeAddress(uint _index) private {
+    function removeStakeIndexFromArray(uint _index) private {
         // only has 1 stake or stakeId is the last index
         if(addressToStakeIds[msg.sender].length == 1 || _index == addressToStakeIds[msg.sender].length) {
             addressToStakeIds[msg.sender].pop();
@@ -243,7 +243,6 @@ contract Vault is Ownable {
             addressToStakeIds[msg.sender][_index - 1] = addressToStakeIds[msg.sender][lastIndex]; // overwrite the position with a new value
             addressToStakeIds[msg.sender].pop();
         }
-        
     }
 
     function amtWithFee(FeeType feeType ,uint _amount) private view returns (uint) {
@@ -274,7 +273,7 @@ contract Vault is Ownable {
     }
 
     function stakeholdersLength() external view returns(uint) {
-        return stakeholders.length;
+        return stakes.length;
     }
 
     function yieldsLength() external view returns(uint) {
@@ -302,8 +301,8 @@ contract Vault is Ownable {
 
     function ifStakerExists(address _address) public view returns(bool isFound) {
         isFound = false;
-        for(uint i = 0; i < stakeholders.length; i++) {
-            if(stakeholders[i].user == _address && stakeholders[i].tillTime == 0) {
+        for(uint i = 0; i < stakes.length; i++) {
+            if(stakes[i].user == _address && stakes[i].tillTime == 0) {
                 isFound = true;
                 break;
             }
@@ -312,7 +311,7 @@ contract Vault is Ownable {
 
     function getClaimsFor(uint _stakeId, uint _yieldId) public view returns(uint, uint) {
         require(_stakeId > 0, 'stakeId cannot be 0');
-        Stake memory staker = stakeholders[_stakeId - 1];
+        Stake memory staker = stakes[_stakeId - 1];
         require(checkUserStakeId(msg.sender, _stakeId), 'stakeId must belong to caller');
         require(staker.tillTime == 0, 'User must have tokens staked');
         require(staker.amountInTokens > 0, 'User does not stake tokens');
@@ -326,6 +325,18 @@ contract Vault is Ownable {
         uint rewards = yieldProgram.yieldPerTokenStaked * staker.amountInTokens / PRECISION_FACTOR;
         uint rewardsAfterFee = amtWithFee(FeeType.Farming, rewards);
         return (rewards, rewardsAfterFee);
+    }
+
+    function getPastStakes(address _address) external view returns(uint[] memory) {
+        uint[] memory stakesArr = new uint[](stakes.length);
+        uint index = 0;
+        for(uint i = 0; i < stakes.length; i++) {
+            if(stakes[i].user == _address && stakes[i].tillTime > 0) {
+                stakesArr[index] = stakes[i].id;
+                index += 1;
+            }
+        }
+        return stakesArr;
     }
 
     // Owner's only
