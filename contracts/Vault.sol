@@ -187,7 +187,7 @@ contract Vault is Ownable {
     }
 
     function withdraw(uint _id) external onlyStatusAbove(1) {
-        require(checkUserWithdrawalId(msg.sender, _id), "Withdrawal must submit withdrawal request");
+        require(_id > 0, "withdrawId cannot be 0");
         Withdrawal storage staker = withdrawals[_id - 1];
         require(staker.sent == false, "Withdraw processed already");
         require(checkUserWithdrawalId(msg.sender, _id), "Withdrawal must submit withdrawal request");
@@ -226,7 +226,7 @@ contract Vault is Ownable {
         emit ClaimedTokens(yieldProgram.id, stake.id, yieldProgram.token, msg.sender, rewardsAfterFee);
         
         // Register user claimed tokens
-        tokensOfUserBalance[yieldProgram.token][msg.sender] = rewardsAfterFee;
+        tokensOfUserBalance[yieldProgram.token][msg.sender] += rewardsAfterFee;
     }
 
     // Private functions
