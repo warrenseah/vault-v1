@@ -87,7 +87,7 @@ contract Vault is Ownable {
     receive() external payable {}
 
     // Public functions
-    function deposit() public payable onlyStatusAbove(2) {
+    function deposit() external payable onlyStatusAbove(2) {
         require(msg.value > 0, "Amount > 0");
         uint depositWithFee = amtWithFee(FeeType.Entry, msg.value);
 
@@ -190,23 +190,25 @@ contract Vault is Ownable {
         require(checkUserWithdrawalId(msg.sender, _id), "Withdrawal must submit withdrawal request");
         Withdrawal storage staker = withdrawals[_id - 1];
         require(staker.sent == false, "Withdraw processed already");
+        require(checkUserWithdrawalId(msg.sender, _id), "Withdrawal must submit withdrawal request");
         require(block.timestamp > staker.end, "Timelock is active");
         require(staker.amountInTokens <= address(this).balance, 'BNB balance not enough');
 
         staker.sent = true;
         (bool success, ) = payable(msg.sender).call{value: staker.amountInTokens}("");
         require(success, "BNB return failed");
-        emit Withdrawn(msg.sender, _id);
+        emit Withdrawn(msg.sender, _id - 1);
 
         removeWithdrawalIndexFromArray(_id);
     }
 
-    function claimYieldTokens(uint _stakeId, uint _yieldId) public onlyStatusAbove(1) {
+    function claimYieldTokens(uint _stakeId, uint _yieldId) external onlyStatusAbove(1) {
         
-        Yield memory yieldProgram = yields[_yieldId];
+        Yield memory yieldProgram = yields[_yieldId - 1];
         Stake memory stake = stakes[_stakeId - 1];
 
-        require(_stakeId > 0, 'stakeId cannot be 0');
+        require(_stakeId > 0, "stakeId cannot be 0");
+        require(_yieldId > 0, "yieldId cannot be 0");
         require(!addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId], "User must not claim rewards already"); 
         require(checkUserStakeId(msg.sender, _stakeId), 'stakeId must belong to caller');
         require(yieldProgram.tillTime > 0, "Yield program must have ended.");
@@ -221,7 +223,7 @@ contract Vault is Ownable {
 
         require(rewardsAfterFee > 0 && rewardsAfterFee <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
         IERC20(yieldProgram.token).transfer(msg.sender, rewardsAfterFee);
-        emit ClaimedTokens(yieldProgram.id, _stakeId - 1, yieldProgram.token, msg.sender, rewardsAfterFee);
+        emit ClaimedTokens(yieldProgram.id, stake.id, yieldProgram.token, msg.sender, rewardsAfterFee);
         
         // Register user claimed tokens
         tokensOfUserBalance[yieldProgram.token][msg.sender] = rewardsAfterFee;
@@ -340,18 +342,20 @@ contract Vault is Ownable {
     }
 
     function getClaimsFor(uint _stakeId, uint _yieldId) public view returns(uint, uint) {
-        require(_stakeId > 0, 'stakeId cannot be 0');
+        require(_stakeId > 0, "stakeId cannot be 0");
+        require(_yieldId > 0, "yieldId cannot be 0");
+        Yield memory yieldProgram = yields[_yieldId - 1];
         Stake memory staker = stakes[_stakeId - 1];
+        require(yieldProgram.tillTime > 0, 'Yield program must have ended');
         require(checkUserStakeId(msg.sender, _stakeId), 'stakeId must belong to caller');
         require(staker.tillTime == 0, 'User must have tokens staked');
-        require(staker.amountInTokens > 0, 'User does not stake tokens');
+        require(yieldProgram.sinceTime > staker.sinceTime, "User must have staked before start of yieldProgram");
 
         if(addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId]) {
             return(0, 0);
         }
 
-        Yield memory yieldProgram = yields[_yieldId];
-        require(yieldProgram.tillTime > 0, 'Yield program must have ended');
+        
         uint rewards = yieldProgram.yieldPerTokenStaked * staker.amountInTokens / PRECISION_FACTOR;
         uint rewardsAfterFee = amtWithFee(FeeType.Farming, rewards);
         return (rewards, rewardsAfterFee);
@@ -367,6 +371,30 @@ contract Vault is Ownable {
             }
         }
         return stakesArr;
+    }
+
+    function getPendingYield() external view returns(uint[] memory) {
+        uint[] memory pendingYields  = new uint[](yields.length);
+        uint index = 0;
+        for(uint i = 0; i < yields.length; i++) {
+            if(yields[i].totalStakeAtTime > 0 && yields[i].yieldPerTokenStaked == 0) {
+                pendingYields[index] = yields[i].id + 1;
+                index += 1;
+            }
+        }
+        return pendingYields;
+    }
+
+    function getEndedYield() external view returns(uint[] memory) {
+        uint[] memory endedYields  = new uint[](yields.length);
+        uint index = 0;
+        for(uint i = 0; i < yields.length; i++) {
+            if(yields[i].tillTime > 0 && yields[i].yieldPerTokenStaked > 0) {
+                endedYields[index] = yields[i].id + 1;
+                index += 1;
+            }
+        }
+        return endedYields;
     }
 
     // Owner's only
@@ -432,7 +460,8 @@ contract Vault is Ownable {
     }
 
     function amendYieldTokens(uint _id, address tokenAddr, uint _deposit, uint _sinceTime, uint _tillTime) external onlyOwner {
-        Yield storage yield = yields[_id];
+        require(_id > 0, "yieldId cannot be 0");
+        Yield storage yield = yields[_id - 1];
         require(yield.totalStakeAtTime > 0, "No stake for programme");
         require(yield.tillTime == 0, "Yield program has ended");
 
