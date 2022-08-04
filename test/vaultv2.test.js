@@ -307,77 +307,76 @@ describe("Vault ContractV2 Test", function () {
       });
     });
 
-    describe.skip("Withdrawals", function () {
-      let wallet1Shares, wallet2Shares;
+    describe("Withdrawals", function () {
+      let wallet1Shares, wallet2Shares, withdrawalId;
 
       before(async function () {
         wallet1Shares = await vault.balanceOf(wallet1.address);
         wallet2Shares = await vault.balanceOf(wallet2.address);
+        const withdrawArray = await vault.addressToWithdrawArr(wallet1.address);
+        withdrawalId = withdrawArray[0].toString();
       });
 
       it("should revert when contractStatus is 0", async function () {
         // Unhappy pass withdrawal will fail when contractStatus is 0 
         await vaultSign.changeStatus(0);
-        await expect(vaultWallet1.withdraw(0)).to.be.revertedWith("Not valid activity");
+        await expect(vaultWallet1.withdraw(withdrawalId)).to.be.revertedWith("Not valid activity");
       });
 
-      it("should revert when msg sender is not user withdrawing", async function () {
+      it("should revert when withdrawalId does not belong to user", async function () {
         // Unhappy pass withdrawal user is not msg.sender
         await vaultSign.changeStatus(1);
-        await expect(vaultWallet2.withdraw(0)).to.be.revertedWith("Withdrawal must be staker");
+        await expect(vaultWallet2.withdraw(withdrawalId)).to.be.revertedWith("Withdrawal must submit withdrawal request");
+      });
+
+      it("should revert when withdrawalId is zero", async function () {
+        // Unhappy pass withdrawal user is not msg.sender
+        await expect(vaultWallet1.withdraw(0)).to.be.revertedWith("withdrawId cannot be 0");
       });
 
       it("should revert when end time is not reached", async function () {
         // Unhappy pass withdrawal end time is still enforced
-        await expect(vaultWallet1.withdraw(0)).to.be.revertedWith("Timelock is active");
+        await expect(vaultWallet1.withdraw(withdrawalId)).to.be.revertedWith("Timelock is active");
       });
 
       it("should withdraw with all variables updated", async function () {
         // Happy pass for withdrawal past withdrawal end time
         // increase time to process withdrawal
         await time.increase(3600);
+        
+        const beforeWithdrawArr = await vault.addressToWithdrawArr(wallet1.address);
+        expect(beforeWithdrawArr).to.be.an("array").that.is.lengthOf(1);
+        expect(beforeWithdrawArr).to.eql([ethers.BigNumber.from('1')]);
 
         const beforeBal = await wallet1.getBalance();
         // console.log('before: ', ethers.utils.formatEther(await wallet1.getBalance()));
-        await expect(vaultWallet1.withdraw(0)).to.emit(vaultWallet1, "Withdrawn").withArgs(wallet1.address, 0);
+        await expect(vaultWallet1.withdraw(withdrawalId)).to.emit(vaultWallet1, "Withdrawn").withArgs(wallet1.address, 0);
         // console.log('after: ', ethers.utils.formatEther(await wallet1.getBalance()));
         const afterBal = await wallet1.getBalance();
         const netBal = afterBal.sub(beforeBal);
         expect(netBal).to.be.gte(ethers.BigNumber.from('940000000000000000'), 'stake ether is not returned');
         // console.log('net: ', netBal);
 
-        const wallet1Withdrawal = await vault.withdrawals(0);
+        const wallet1Withdrawal = await vault.withdrawals(withdrawalId - 1);
         expect(wallet1Withdrawal['sent']).to.be.true;
         expect(wallet1Withdrawal['end']).to.be.lt(await time.latest(), 'wallet1Withdrawal time must already have past');
+
+        const afterWithdrawArr = await vault.addressToWithdrawArr(wallet1.address);
+        expect(afterWithdrawArr).to.be.an("array").that.is.empty;
+      });
+
+      it("should revert as withdrawalId is already processed", async function () {
+        // Unhappy pass withdrawal
+        await expect(vaultWallet1.withdraw(withdrawalId)).to.be.revertedWith("Withdraw processed already");
       });
 
       it("should withdraw when contractStatus is 2", async function () {
         // Happy pass withdrawal to process when contractStatus is 2
         await vaultSign.changeStatus(2);
-
-        await vaultWallet2.submitWithdrawal(wallet2Shares);
-        expect(await vault.balanceOf(wallet2.address)).to.equal(0, "Shares are not burnt upon withdrawal");
-        expect(await vault.stakeOf(wallet2.address)).to.equal(0, "Staked balance is not zero");
-        expect(await vault.totalSupply()).to.equal(0, 'totalSupply is not reduced upon withdrawal');
-        expect(await vault.totalStakes()).to.equal(0, 'totalStakes is not reduced upon withdrawal');
-        expect(await vault.addressToIndex(wallet2.address)).to.equal(0, "addressToIndex is not zero");
-        expect(await vault.isAddressExists(wallet2.address)).to.be.false;
-
-        expect(await vault.nextWithdrawalID()).to.equal(2, 'nextWithdrawalID is not equal to 2');
-        expect(await vault.withdrawalLength()).to.equal(2, 'withdrawalLength is not equal to 2');
-        expect(await vault.stakeholdersLength()).to.equal(0, 'stakeholdersLength is reduced by one pendingWithdrawal');
-
-        const pending2Withdrawal = await vault.withdrawals(1);
-        expect(pending2Withdrawal['id']).to.equal(1, 'Withdrawal id is not equal to 0');
-        expect(pending2Withdrawal['user']).to.equal(wallet2.address, 'pending2Withdrawal address is not equal to wallet2');
-        expect(pending2Withdrawal['shares']).to.equal(wallet2Shares, 'pending2Withdrawal shares is not equal to amount withdraw');
-        expect(pending2Withdrawal['amountInTokens']).to.equal(wallet2Shares, 'pending2Withdrawal amountInTokens is not equal to amount withdraw');
-        expect(pending2Withdrawal['end']).to.be.gt(await time.latest(), 'pending2Withdrawal time must be in the future');
-        expect(pending2Withdrawal['sent']).to.be.false;
+        await vaultWallet2.submitWithdrawal(2);
 
         await time.increase(3600);
-
-        await expect(vaultWallet2.withdraw(1)).to.changeEtherBalance(wallet2, ethers.BigNumber.from('950000000000000000'));
+        await expect(vaultWallet2.withdraw(2)).to.changeEtherBalance(wallet2, ethers.BigNumber.from('950000000000000000'));
       });
     });
   });
