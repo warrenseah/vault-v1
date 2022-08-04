@@ -183,6 +183,7 @@ describe("Vault ContractV2 Test", function () {
   describe("Deposit and Withdrawal", function () {
     const deposit1 = ethers.utils.parseUnits('1');
     const depositWithFee = ethers.utils.parseUnits('0.95'); // less 5% for entryFee
+    const profitsBNB = ethers.utils.parseUnits('0.05'); // profit to smartcontract
 
     describe("Deposits", async function () {
       it("should revert when contractStatus is 0", async function () {
@@ -203,7 +204,10 @@ describe("Vault ContractV2 Test", function () {
         await vaultSign.changeStatus(2);
         expect(await vault.contractStatus()).to.equal(2, 'contractStatus is not set to 2');
 
+        expect(await vault.profits()).to.equal(0, 'profits should be 0');
         await expect(vaultWallet1.deposit({ value: deposit1 })).to.emit(vaultWallet1, "Deposit").withArgs(wallet1.address, 0, depositWithFee);
+        // check if smartcontract register entryFee profit
+        expect(await vault.profits()).to.equal(profitsBNB, 'profits not updated with the incoming deposit');
         expect(await vault.balanceOf(wallet1.address)).to.equal(depositWithFee, "Shares are not minted on deposit");
         expect(await vault.stakeOf(wallet1.address)).to.equal(depositWithFee, 'Deposit balance is not equal');
         expect(await vault.totalSupply()).to.equal(depositWithFee, 'totalSupply is not equal to minted shares');
@@ -226,10 +230,11 @@ describe("Vault ContractV2 Test", function () {
         await expect(vaultWallet2.deposit({ value: deposit1 })).to.changeEtherBalance(wallet2, '-1000000000000000000');
         expect(await vault.stakeOf(wallet2.address)).to.equal(depositWithFee, 'Deposit balance is not equal');
         expect(await vault.nextStakesId()).to.equal(2, 'nextStakesId should increment 1');
+        expect(await vault.profits()).to.equal(profitsBNB.mul('2'), 'profits not updated with the incoming deposit');
       });
     });
 
-    describe.skip("PendingWithdrawals", function () {
+    describe("PendingWithdrawals", function () {
       let wallet1Shares;
 
       before(async function () {
@@ -241,21 +246,23 @@ describe("Vault ContractV2 Test", function () {
         await expect(vaultWallet1.submitWithdrawal(wallet1Shares)).to.be.revertedWith("Not valid activity");
       });
 
-      it("should revert when submitted by a user not found in stakeholders array", async function () {
+      it("should revert when submitted by a user not found in stakes array", async function () {
         // Unhappy pass submitWithdrawal by a non staker
         await vaultSign.changeStatus(1);
-        await expect(vaultWallet3.submitWithdrawal(5)).to.be.revertedWith("User must be a staker");
+        await expect(vaultWallet3.submitWithdrawal(1)).to.be.revertedWith("stakeId must belong to caller");
+      });
+
+      it("should revert when submitted by a non user on a invalid stakeId", async function () {
+        // Unhappy pass submitWithdrawal by a non staker
+        await vaultSign.changeStatus(1);
+        await expect(vaultWallet3.submitWithdrawal(5)).to.be.reverted;
       });
 
       it("should revert when withdrawing zero share", async function () {
-        await expect(vaultWallet1.submitWithdrawal(0)).to.be.revertedWith("Shares > 0");
+        await expect(vaultWallet1.submitWithdrawal(0)).to.be.revertedWith("stakeId cannot be 0");
       });
 
-      it("should revert when withdrawing more shares than owner owns", async function () {
-        await expect(vaultWallet1.submitWithdrawal(wallet1Shares.add('100000'))).to.be.revertedWith("Not enough shares");
-      });
-
-      it("should update all state variables upon user submitting pendingWithdrawals", async function () {
+      xit("should update all state variables upon user submitting pendingWithdrawals", async function () {
         // Happy pass submitWithdrawal
         await expect(vaultWallet1.submitWithdrawal(wallet1Shares)).to.emit(vaultWallet1, "PendingWithdrawal").withArgs(0, wallet1.address, wallet1Shares);
         expect(await vault.balanceOf(wallet1.address)).to.equal(0, "Shares are not burnt upon withdrawal");
