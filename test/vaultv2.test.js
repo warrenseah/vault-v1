@@ -262,21 +262,42 @@ describe("Vault ContractV2 Test", function () {
         await expect(vaultWallet1.submitWithdrawal(0)).to.be.revertedWith("stakeId cannot be 0");
       });
 
-      xit("should update all state variables upon user submitting pendingWithdrawals", async function () {
+      it("should update all state variables upon user submitting pendingWithdrawals", async function () {
         // Happy pass submitWithdrawal
-        await expect(vaultWallet1.submitWithdrawal(wallet1Shares)).to.emit(vaultWallet1, "PendingWithdrawal").withArgs(0, wallet1.address, wallet1Shares);
+        const stakeArray = await vault.addressToStakeArr(wallet1.address);
+        const wallet1StakeId = stakeArray[0].toNumber();
+
+        expect(await vault.ifStakerExists(wallet1.address)).to.be.true;
+        await expect(vaultWallet1.submitWithdrawal(wallet1StakeId)).to.emit(vaultWallet1, "PendingWithdrawal").withArgs(0, 0, wallet1.address, wallet1Shares);
         expect(await vault.balanceOf(wallet1.address)).to.equal(0, "Shares are not burnt upon withdrawal");
         expect(await vault.stakeOf(wallet1.address)).to.equal(0, "Staked balance is not zero");
         expect(await vault.totalSupply()).to.equal(ethers.BigNumber.from('950000000000000000'), 'totalSupply is not reduced upon withdrawal');
         expect(await vault.totalStakes()).to.equal(ethers.BigNumber.from('950000000000000000'), 'totalStakes is not reduced upon withdrawal');
-        expect(await vault.addressToIndex(wallet1.address)).to.equal(0, "addressToIndex is not zero");
-        expect(await vault.isAddressExists(wallet1.address)).to.be.false;
+        expect(await vault.ifStakerExists(wallet1.address)).to.be.false;
+
+        const withdrawArray = await vault.addressToWithdrawArr(wallet1.address);
+        expect(withdrawArray).to.be.a("array");
+        expect(withdrawArray).to.have.lengthOf(1);
+        expect(withdrawArray).to.eql([ethers.BigNumber.from("1")]); // need to subtract 1 to get the true withdrawalid
+        const afterStakeArray = await vault.addressToStakeArr(wallet1.address);
+        expect(afterStakeArray).to.be.an("array").that.is.empty;
+        const pastStakeArr = await vault.getPastStakes(wallet1.address);
+        const filterPastStake = pastStakeArr
+          .filter((_id) => _id.toNumber() > 0)
+          .map(_id => _id.toNumber());
+          
+        expect(filterPastStake).to.be.an("array");
+        expect(filterPastStake).to.have.lengthOf(1);
+        expect(filterPastStake).to.eql([1]); // need to subtract 1 to get the true stakeId
+        
+        const pastStaker = await vault.stakes(filterPastStake[0] - 1);
+        expect(pastStaker.user).to.equal(wallet1.address, 'staker is not wallet1');
+        expect(pastStaker.tillTime).to.be.gt(0, 'tillTime must be greater than 0');
 
         expect(await vault.nextWithdrawalID()).to.equal(1, 'nextWithdrawalID is not equal to 1');
         expect(await vault.withdrawalLength()).to.equal(1, 'withdrawalLength is not equal to 1');
-        expect(await vault.stakeholdersLength()).to.equal(1, 'stakeholdersLength is reduced by one pendingWithdrawal');
 
-        const pendingWithdrawal = await vault.withdrawals(0);
+        const pendingWithdrawal = await vault.withdrawals( wallet1StakeId - 1);
         expect(pendingWithdrawal['id']).to.equal(0, 'Withdrawal id is not equal to 0');
         expect(pendingWithdrawal['user']).to.equal(wallet1.address, 'pendingWithdrawal address is not equal to wallet1');
         expect(pendingWithdrawal['shares']).to.equal(wallet1Shares, 'pendingWithdrawal shares is not equal to amount withdraw');
