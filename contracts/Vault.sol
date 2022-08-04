@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import './Ownable.sol';
-import './IERC20.sol';
+import "./Ownable.sol";
+import "./IERC20.sol";
 
 contract Vault is Ownable {
     
@@ -133,9 +133,9 @@ contract Vault is Ownable {
     }
 
     function submitWithdrawal(uint _stakeId) external onlyStatusAbove(1) {
-        require(_stakeId > 0, 'stakeId cannot be 0');
+        require(_stakeId > 0, "stakeId cannot be 0");
         Stake storage staker = stakes[_stakeId - 1];
-        require(staker.id == _stakeId - 1, "stakeId does not exists");
+        require(checkUserStakeId(msg.sender, _stakeId), "stakeId must belong to caller");
         require(staker.tillTime == 0, "stakeId is already processed");
         require(staker.user == msg.sender, "stake does not belong to caller");
 
@@ -153,7 +153,7 @@ contract Vault is Ownable {
             a = sB / T
         */
         uint amount = (staker.shares * totalStakes) / totalSupply;
-        require(amount <= stakeOf[msg.sender], 'Not enough stakedTokens');
+        require(amount <= stakeOf[msg.sender], "Not enough stakedTokens");
 
         // Remove staked tokens
         totalStakes -= amount;
@@ -174,7 +174,7 @@ contract Vault is Ownable {
         addressToWithdrawalIds[msg.sender].push(withdrawals.length);
 
         // burn the shares 
-        require(staker.shares <= balanceOf[msg.sender], 'Not enough stakedTokens');
+        require(staker.shares <= balanceOf[msg.sender], "Not enough stakedTokens");
         _burnShares(msg.sender, staker.shares);
         
          // If burning entire shares, remove from staker otherwise do nothing
@@ -192,7 +192,7 @@ contract Vault is Ownable {
         require(staker.sent == false, "Withdraw processed already");
         require(checkUserWithdrawalId(msg.sender, _id), "Withdrawal must submit withdrawal request");
         require(block.timestamp > staker.end, "Timelock is active");
-        require(staker.amountInTokens <= address(this).balance, 'BNB balance not enough');
+        require(staker.amountInTokens <= address(this).balance, "BNB balance not enough");
 
         staker.sent = true;
         (bool success, ) = payable(msg.sender).call{value: staker.amountInTokens}("");
@@ -210,7 +210,7 @@ contract Vault is Ownable {
         require(_stakeId > 0, "stakeId cannot be 0");
         require(_yieldId > 0, "yieldId cannot be 0");
         require(!addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId], "User must not claim rewards already"); 
-        require(checkUserStakeId(msg.sender, _stakeId), 'stakeId must belong to caller');
+        require(checkUserStakeId(msg.sender, _stakeId), "stakeId must belong to caller");
         require(yieldProgram.tillTime > 0, "Yield program must have ended.");
         require(yieldProgram.sinceTime > stake.sinceTime, "User must have staked before start of yieldProgram");
         
@@ -280,7 +280,7 @@ contract Vault is Ownable {
 
     // Modifier
     modifier onlyStatusAbove(uint8 _type) {
-        require(uint8(contractStatus) >= _type, 'Not valid activity');
+        require(uint8(contractStatus) >= _type, "Not valid activity");
         _;
     }
 
@@ -346,9 +346,9 @@ contract Vault is Ownable {
         require(_yieldId > 0, "yieldId cannot be 0");
         Yield memory yieldProgram = yields[_yieldId - 1];
         Stake memory staker = stakes[_stakeId - 1];
-        require(yieldProgram.tillTime > 0, 'Yield program must have ended');
-        require(checkUserStakeId(msg.sender, _stakeId), 'stakeId must belong to caller');
-        require(staker.tillTime == 0, 'User must have tokens staked');
+        require(yieldProgram.tillTime > 0, "Yield program must have ended");
+        require(checkUserStakeId(msg.sender, _stakeId), "stakeId must belong to caller");
+        require(staker.tillTime == 0, "User must have tokens staked");
         require(yieldProgram.sinceTime > staker.sinceTime, "User must have staked before start of yieldProgram");
 
         if(addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId]) {
@@ -416,7 +416,7 @@ contract Vault is Ownable {
     }
 
     function withdrawProfits() external onlyOwner {
-        require(profits > 0, 'Not enough gasToken to withdraw');
+        require(profits > 0, "Not enough gasToken to withdraw");
         uint withdrawAmt = profits;
         profits = 0;
         (bool success, ) = payable(msg.sender).call{ value: withdrawAmt }("");
@@ -425,23 +425,23 @@ contract Vault is Ownable {
     }
 
     function withdrawTokenProfits(address _token) external onlyOwner {
-        require(profitsInToken[_token] > 0, 'Not enough tokens to withdraw');
+        require(profitsInToken[_token] > 0, "Not enough tokens to withdraw");
         uint withdrawAmt = profitsInToken[_token];
         profitsInToken[_token] = 0;
         IERC20 token = IERC20(_token);
-        require(withdrawAmt <= token.balanceOf(address(this)), 'Not enough token to send');
+        require(withdrawAmt <= token.balanceOf(address(this)), "Not enough token to send");
         token.transfer(msg.sender, withdrawAmt);
         emit ProfitWithdraw(FeeType.Farming, withdrawAmt, _token);
     }
 
     function withdrawTokensToOwner(IERC20 token, uint _amount) external onlyOwner {
-        require(_amount <= token.balanceOf(address(this)), 'Not enough token to return');
+        require(_amount <= token.balanceOf(address(this)), "Not enough token to return");
         token.transfer(owner(), _amount);
     }
 
     function withdrawBNBToOwner() external onlyOwner {
         (bool success, ) = payable(owner()).call{ value: address(this).balance}("");
-        require(success, 'Return bnb failed');
+        require(success, "Return bnb failed");
     }
 
     function addYieldTokens(uint _sinceTime, uint _totalStake) external onlyOwner {
