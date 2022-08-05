@@ -262,7 +262,7 @@ contract Vault is Ownable {
         }
     }
 
-    function amtWithFee(FeeType feeType ,uint _amount) private view returns (uint) {
+    function amtWithFee(FeeType feeType ,uint _amount) public view returns (uint) {
         if(feeType == FeeType.Farming) {
             return uint256((_amount * (100 - farmingFee)) / 100);
         } else {
@@ -270,7 +270,7 @@ contract Vault is Ownable {
         }   
     }
 
-    function feeToProtocol(FeeType feeType, uint _amount) private view returns(uint) {
+    function feeToProtocol(FeeType feeType, uint _amount) public view returns(uint) {
         if(feeType == FeeType.Farming) {
             return uint256((_amount * farmingFee) / 100);
         } else {
