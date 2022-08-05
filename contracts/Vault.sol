@@ -200,12 +200,9 @@ contract Vault is Ownable {
     }
 
     function claimYieldTokens(uint _stakeId, uint _yieldId) external onlyStatusAbove(1) {
-        
+        require(_stakeId > 0 && _yieldId > 0, "id cannot be 0");
         Yield memory yieldProgram = yields[_yieldId - 1];
         Stake memory stake = stakes[_stakeId - 1];
-
-        require(_stakeId > 0, "stakeId cannot be 0");
-        require(_yieldId > 0, "yieldId cannot be 0");
         require(!addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId], "User must not claim rewards already"); 
         require(checkUserStakeId(msg.sender, _stakeId), "stakeId must belong to caller");
         require(yieldProgram.tillTime > 0, "Yield program must have ended.");
@@ -339,8 +336,7 @@ contract Vault is Ownable {
     }
 
     function getClaimsFor(uint _stakeId, uint _yieldId) public view returns(uint, uint) {
-        require(_stakeId > 0, "stakeId cannot be 0");
-        require(_yieldId > 0, "yieldId cannot be 0");
+        require(_stakeId > 0 && _yieldId > 0, "id cannot be 0");
         Yield memory yieldProgram = yields[_yieldId - 1];
         Stake memory staker = stakes[_stakeId - 1];
         require(yieldProgram.tillTime > 0, "Yield program must have ended");
