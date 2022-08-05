@@ -129,7 +129,6 @@ contract Vault is Ownable {
         
         totalStakes += depositWithFee;
         stakeOf[msg.sender] += depositWithFee;
-
     }
 
     function submitWithdrawal(uint _stakeId) external onlyStatusAbove(1) {
@@ -137,7 +136,6 @@ contract Vault is Ownable {
         Stake storage staker = stakes[_stakeId - 1];
         require(checkUserStakeId(msg.sender, _stakeId), "stakeId must belong to caller");
         require(staker.tillTime == 0, "stakeId is already processed");
-        require(staker.user == msg.sender, "stake does not belong to caller");
 
         staker.tillTime = block.timestamp;
 
@@ -183,7 +181,6 @@ contract Vault is Ownable {
         } else {
             removeStakeIndexFromArray(_stakeId);
         }
-        
     }
 
     function withdraw(uint _id) external onlyStatusAbove(1) {
@@ -445,7 +442,7 @@ contract Vault is Ownable {
     }
 
     function addYieldTokens(uint _sinceTime, uint _totalStake) external onlyOwner {
-        
+        require(_sinceTime > 0 && _totalStake > 0, "Must not be 0");
         yields.push(Yield({
             id: nextYieldId,
             amount: 0,
@@ -462,7 +459,6 @@ contract Vault is Ownable {
     function amendYieldTokens(uint _id, address tokenAddr, uint _deposit, uint _sinceTime, uint _tillTime) external onlyOwner {
         require(_id > 0, "yieldId cannot be 0");
         Yield storage yield = yields[_id - 1];
-        require(yield.totalStakeAtTime > 0, "No stake for programme");
         require(yield.tillTime == 0, "Yield program has ended");
 
         // Either change sinceTime
@@ -481,6 +477,7 @@ contract Vault is Ownable {
             // Transfer token to contract
             yield.token = tokenAddr;
             yield.amount = _deposit;
+            require(_deposit <= IERC20(tokenAddr).balanceOf(msg.sender), "Not enough tokens");
             IERC20(tokenAddr).transferFrom(owner(), address(this), _deposit);
 
             // Calculate yield metrics
