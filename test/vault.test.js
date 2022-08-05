@@ -517,8 +517,7 @@ describe("Vault ContractV2 Test", function () {
         // check admin profits
         expect(await vault.profitsInToken(mockToken.address)).to.equal(adminFee, "Admin profit is not reflected in profitsInToken");
 
-        // expect(await vaultWallet2.claimYieldTokens(mockToken.address)).to.emit("ClaimedTokens").withArgs(mockToken.address, wallet2.address, '63999999999999998720000');
-        // expect(await mockToken.balanceOf(wallet2.address)).to.equal('63999999999999998720000', "claimedTokens is not transferred to wallet2");
+        await expect(vaultWallet2.claimYieldTokens(2,1)).to.changeTokenBalance(mockToken, wallet2, '63999999999999998720000');
       });
 
       it("should revert when user claimed again", async function() {
@@ -541,6 +540,21 @@ describe("Vault ContractV2 Test", function () {
         const totalStateNow = await vault.totalStakes();
         await vaultSign.addYieldTokens(await time.latest(), totalStateNow.toString());
         await expect(vaultWallet3.claimYieldTokens(3, 2)).to.be.revertedWith("Yield program must have ended.");
+      });
+    });
+
+    describe("admin claim profits", function() {
+      it("should send bnb to owner", async function() {
+        const bnbProfits = ethers.utils.parseUnits('0.3');
+        expect(await vaultSign.withdrawProfits()).to.changeEtherBalance(vaultSign, "-300000000000000000").to.emit("ProfitWithdraw").withArgs(0, bnbProfits, ethers.constants.AddressZero);
+      });
+
+      it("should revert if profits is 0", async function() {
+        await expect(vaultSign.withdrawProfits()).to.be.revertedWith("Not enough gasToken to withdraw");
+      });
+
+      it("should send tokens profits to owner", async function() {
+        expect(await vaultSign.withdrawTokenProfits(mockToken.address)).to.changeTokenBalance(mockToken,deployer.address,"19999999999999999600000").to.emit("ProfitWithdraw").withArgs(1,"19999999999999999600000",mockToken.address);
       });
     });
   });
