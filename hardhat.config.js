@@ -1,4 +1,6 @@
 require("@nomicfoundation/hardhat-chai-matchers");
+require("dotenv").config();
+require("hardhat-gas-reporter");
 
 // This is a sample Hardhat task. To learn how to create your own go to
 // https://hardhat.org/guides/create-task.html
@@ -25,5 +27,12 @@ module.exports = {
         runs: 200
       }
     }
+  },
+  gasReporter: {
+    enabled: true,
+    currency: 'USD',
+    token: 'BNB',
+    gasPriceApi: 'https://api.bscscan.com/api?module=proxy&action=eth_gasPrice',
+    coinmarketcap: process.env.COINMARKETCAPAPI
   }
 };
