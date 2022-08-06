@@ -476,7 +476,18 @@ describe("Vault ContractV2 Test", function () {
       });
 
       it("should end the yield programme when all input are processed", async function() {
-        await vaultSign.amendYieldTokens(1, mockToken.address, yieldTokenAmt, 0, endTime);
+        // Before ending yield
+        const yieldArr = await vault.getPendingYield();
+        const yieldId = yieldArr[0].toString();
+        expect(yieldId).to.equal("1");
+        expect(await vault.getEndedYield()).to.eql([ethers.BigNumber.from('0')]);
+
+        await vaultSign.amendYieldTokens(yieldId, mockToken.address, yieldTokenAmt, 0, endTime);
+        
+        // after ending yield
+        expect(await vault.getPendingYield()).to.eql([ethers.BigNumber.from('0')]);
+        expect(await vault.getEndedYield()).to.eql([ethers.BigNumber.from('1')]);
+        
         const checkYield = await vault.yields(0);
         expect(checkYield.amount).to.equal(yieldTokenAmt, "amount is not reflecting yield token amount");
         expect(checkYield.tillTime).to.be.gt(0, "tillTime must be greater than 0");
