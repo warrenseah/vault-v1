@@ -357,46 +357,4 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
       });
     });
   });
-
-  describe("Ownership", function () {
-    describe("transferOwnership", function () {
-      it("should revert for a non-owner call", async function () {
-        // Unhappy pass for non-owner to call
-        await expect(
-          vaultWallet1.transferOwnership(wallet1.address)
-        ).to.be.revertedWith("Ownable: caller is not the owner");
-      });
-
-      it("should revert when a new owner address is zero", async function () {
-        // Unhappy pass for ethereum zero address
-        await expect(
-          vaultSign.transferOwnership(ethers.constants.AddressZero)
-        ).to.be.revertedWith("Ownable: new owner is the zero address");
-      });
-
-      it("should update the new owner address for a successful call", async function () {
-        // Happy pass to transferOwnership
-        expect(await vaultSign.transferOwnership(wallet1.address))
-          .to.emit("OwnershipTransferred")
-          .withArgs(deployer.address, wallet1.address);
-        await expect(vaultSign.changeStatus(0)).to.be.revertedWith(
-          "Ownable: caller is not the owner"
-        );
-        expect(await vault.owner()).to.equal(wallet1.address);
-        await vaultWallet1.changeStatus(0);
-      });
-    });
-
-    describe("renounceOwnership", function () {
-      it("should set contract owner to nobody after renouncing", async function () {
-        expect(await vaultWallet1.renounceOwnership())
-          .to.emit("OwnershipTransferred")
-          .withArgs(wallet1.address, ethers.constants.AddressZero);
-        expect(await vault.owner()).to.equal(
-          ethers.constants.AddressZero,
-          "Owner address is not zero"
-        );
-      });
-    });
-  });
 });
