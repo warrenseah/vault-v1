@@ -1,37 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./Ownable.sol";
-import "./IERC20.sol";
+import "./Admin.sol";
 
-contract Vault is Ownable {
+contract Vault is Ownable, Admin {
     
-    enum StatusType {
-        Inactive, // both deposit and withdrawal are inactive
-        DepositInactive, // Not accepting deposits
-        Active 
-    }
-    
-    enum FeeType {
-        Entry,
-        Farming
-    }
-
-    StatusType public contractStatus = StatusType.Inactive;
-
-    uint8 public entryFee = 5;
-    uint8 public farmingFee = 20;
-    uint public constant PRECISION_FACTOR = 10 ** 12;
-    uint public duration = 1 minutes;
-    uint public nextWithdrawalID = 0;
-    uint public profits; // bnb profits for admin
-    mapping(address => uint) public profitsInToken; // altcoins profits for admin
-    
-    // Vault shares
-    uint public totalSupply;
-    mapping(address => uint) public balanceOf;
-
-    // Stake
     struct Stake {
         uint id;
         address user;
@@ -40,14 +13,7 @@ contract Vault is Ownable {
         uint sinceTime;
         uint tillTime;
     }
-    
-    Stake[] public stakes;
-    mapping(address => uint[]) public addressToStakeIds; // need to subtract by 1 to get the true mapping
-    mapping(address => uint) public stakeOf;
-    uint public totalStakes;
-    uint public nextStakesId = 0;
 
-    // Yield struct
     struct Yield {
         uint id;
         uint amount;
@@ -58,12 +24,6 @@ contract Vault is Ownable {
         address token;
     }
 
-    // Token to stakedUsers records
-    Yield[] public yields;
-    mapping(address => mapping(uint => mapping(uint => bool))) public addressClaimedYieldRewards; // 1st uint _yieldId 2nd _stakeId
-    mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
-    uint public nextYieldId = 0;
-
     struct Withdrawal {
         uint id;
         address user;
@@ -73,16 +33,35 @@ contract Vault is Ownable {
         bool sent;
     }
 
+    uint public constant PRECISION_FACTOR = 10 ** 12;
+    uint public duration = 1 minutes;
+    uint public nextWithdrawalID = 0;
+    
+    // Vault shares
+    uint public totalSupply;
+    mapping(address => uint) public balanceOf;
+
+    // Stake
+    Stake[] public stakes;
+    mapping(address => uint[]) public addressToStakeIds; // need to subtract by 1 to get the true mapping
+    mapping(address => uint) public stakeOf;
+    uint public totalStakes;
+    uint public nextStakesId = 0;
+
+    // Token to stakes records
+    Yield[] public yields;
+    mapping(address => mapping(uint => mapping(uint => bool))) public addressClaimedYieldRewards; // 1st uint _yieldId 2nd _stakeId
+    mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
+    uint public nextYieldId = 0;
+
     Withdrawal[] public withdrawals;
     mapping(address => uint[]) public addressToWithdrawalIds; // need to subtract by 1 to get the true mapping
 
-    event StatusChanged(StatusType indexed _type);
     event Deposit(address indexed user, uint indexed stakeId, uint amount);
     event PendingWithdrawal(uint indexed withdrawalID, uint indexed stakeId, address indexed user, uint amount);
     event Withdrawn(address indexed user, uint withdrawalID);
     event YieldEnded(uint indexed _id, address indexed _token, uint _yieldPerTokenStakedPerSec, uint _sinceTime);
     event ClaimedTokens(uint indexed yieldId, uint stakeId, address indexed token, address indexed user, uint amount);
-    event ProfitWithdraw(FeeType _type, uint _amount, address _token);
 
     receive() external payable {}
 
@@ -256,22 +235,6 @@ contract Vault is Ownable {
         }
     }
 
-    function amtWithFee(FeeType feeType ,uint _amount) public view returns (uint) {
-        if(feeType == FeeType.Farming) {
-            return uint256((_amount * (100 - farmingFee)) / 100);
-        } else {
-            return uint256((_amount * (100 - entryFee)) / 100);
-        }   
-    }
-
-    function feeToProtocol(FeeType feeType, uint _amount) public view returns(uint) {
-        if(feeType == FeeType.Farming) {
-            return uint256((_amount * farmingFee) / 100);
-        } else {
-            return uint256((_amount * entryFee) / 100);
-        }
-    }
-
     // Modifier
     modifier onlyStatusAbove(uint8 _type) {
         require(uint8(contractStatus) >= _type, "Not valid activity");
@@ -279,10 +242,6 @@ contract Vault is Ownable {
     }
 
     // Helper functions 
-    function checkBalance() external view returns(uint) {
-        return address(this).balance;
-    }
-
     function stakesLength() external view returns(uint) {
         return stakes.length;
     }
@@ -391,50 +350,8 @@ contract Vault is Ownable {
     }
 
     // Owner's only
-    function changeFee(FeeType _type, uint8 _fee) external onlyOwner {
-        if(_type == FeeType.Entry) {
-            entryFee = _fee;
-        } else {
-            farmingFee = _fee;
-        }
-    }
-
-    function changeStatus(StatusType _type) external onlyOwner {
-        contractStatus = _type;
-        emit StatusChanged(_type);
-    }
-
     function changeDuration(uint _seconds) external onlyOwner {
         duration = _seconds;
-    }
-
-    function withdrawProfits() external onlyOwner {
-        require(profits > 0, "Not enough gasToken to withdraw");
-        uint withdrawAmt = profits;
-        profits = 0;
-        (bool success, ) = payable(msg.sender).call{ value: withdrawAmt }("");
-        emit ProfitWithdraw(FeeType.Entry, withdrawAmt, address(0));
-        require(success, "BNB Profits withdrawal failed");
-    }
-
-    function withdrawTokenProfits(address _token) external onlyOwner {
-        require(profitsInToken[_token] > 0, "Not enough tokens to withdraw");
-        uint withdrawAmt = profitsInToken[_token];
-        profitsInToken[_token] = 0;
-        IERC20 token = IERC20(_token);
-        require(withdrawAmt <= token.balanceOf(address(this)), "Not enough token to send");
-        token.transfer(msg.sender, withdrawAmt);
-        emit ProfitWithdraw(FeeType.Farming, withdrawAmt, _token);
-    }
-
-    function withdrawTokensToOwner(IERC20 token, uint _amount) external onlyOwner {
-        require(_amount <= token.balanceOf(address(this)), "Not enough token to return");
-        token.transfer(owner(), _amount);
-    }
-
-    function withdrawBNBToOwner() external onlyOwner {
-        (bool success, ) = payable(owner()).call{ value: address(this).balance}("");
-        require(success, "Return bnb failed");
     }
 
     function addYieldTokens(uint _sinceTime, uint _totalStake) external onlyOwner {
