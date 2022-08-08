@@ -137,8 +137,8 @@ describe("Vault Contract General Test", function () {
         "farmingFee is not default setting"
       );
 
-      await vaultSign.changeFee(0, entryFee); // change entryFee
-      await vaultSign.changeFee(1, farmingFee); // change farmingFee
+      await expect(vaultSign.changeFee(0, entryFee)).to.emit(vault, "FeeChange").withArgs(0,entryFee); // change entryFee
+      await expect(vaultSign.changeFee(1, farmingFee)).to.emit(vault, "FeeChange").withArgs(1,farmingFee); // change farmingFee
 
       expect(await vault.entryFee()).to.equal(
         entryFee,
@@ -157,7 +157,7 @@ describe("Vault Contract General Test", function () {
       );
 
       await expect(vaultSign.changeStatus(status))
-        .to.emit(vaultSign, "StatusChanged")
+        .to.emit(vault, "StatusChanged")
         .withArgs(status);
 
       expect(await vault.contractStatus()).to.equal(

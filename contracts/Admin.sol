@@ -24,6 +24,7 @@ contract Admin is Ownable {
     mapping(address => uint) public profitsInToken; // altcoins profits for admin
 
     event StatusChanged(StatusType indexed _type);
+    event FeeChange(FeeType indexed _type, uint8 amount);
     event ProfitWithdraw(FeeType _type, uint _amount, address _token);
 
     function amtWithFee(FeeType feeType ,uint _amount) public view returns (uint) {
@@ -46,8 +47,10 @@ contract Admin is Ownable {
     function changeFee(FeeType _type, uint8 _fee) external onlyOwner {
         if(_type == FeeType.Entry) {
             entryFee = _fee;
+            emit FeeChange(FeeType.Entry, _fee);
         } else {
             farmingFee = _fee;
+            emit FeeChange(FeeType.Farming, _fee);
         }
     }
 
