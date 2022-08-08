@@ -71,13 +71,15 @@ contract Admin is Ownable {
         profitsInToken[_token] = 0;
         IERC20 token = IERC20(_token);
         require(withdrawAmt <= token.balanceOf(address(this)), "Not enough token to send");
-        token.transfer(msg.sender, withdrawAmt);
+        bool success = token.transfer(msg.sender, withdrawAmt);
+        require(success, "token transfer failed");
         emit ProfitWithdraw(FeeType.Farming, withdrawAmt, _token);
     }
 
     function withdrawTokensToOwner(IERC20 token, uint _amount) external onlyOwner {
         require(_amount <= token.balanceOf(address(this)), "Not enough token to return");
-        token.transfer(owner(), _amount);
+        bool success = token.transfer(owner(), _amount);
+        require(success, "token transfer failed");
     }
 
     function withdrawBNBToOwner() external onlyOwner {
