@@ -67,7 +67,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
 
         expect(await vault.profits()).to.equal(0, "profits should be 0");
         await expect(vaultWallet1.deposit({ value: deposit1 }))
-          .to.emit(vaultWallet1, "Deposit")
+          .to.emit(vault, "Deposit")
           .withArgs(wallet1.address, 0, depositWithFee);
         // check if smartcontract register entryFee profit
         expect(await vault.profits()).to.equal(
@@ -173,7 +173,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
 
         expect(await vault.ifStakerExists(wallet1.address)).to.be.true;
         await expect(vaultWallet1.submitWithdrawal(wallet1StakeId))
-          .to.emit(vaultWallet1, "PendingWithdrawal")
+          .to.emit(vault, "PendingWithdrawal")
           .withArgs(0, 0, wallet1.address, wallet1Shares);
         expect(await vault.balanceOf(wallet1.address)).to.equal(
           0,
@@ -306,7 +306,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
         const beforeBal = await wallet1.getBalance();
         // console.log('before: ', ethers.utils.formatEther(await wallet1.getBalance()));
         await expect(vaultWallet1.withdraw(withdrawalId))
-          .to.emit(vaultWallet1, "Withdrawn")
+          .to.emit(vault, "Withdrawn")
           .withArgs(wallet1.address, 0);
         // console.log('after: ', ethers.utils.formatEther(await wallet1.getBalance()));
         const afterBal = await wallet1.getBalance();

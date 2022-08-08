@@ -73,8 +73,8 @@ describe("Vault Contract Owners Feature Test", function () {
 
       it("should update the new owner address for a successful call", async function () {
         // Happy pass to transferOwnership
-        expect(await vaultSign.transferOwnership(wallet1.address))
-          .to.emit("OwnershipTransferred")
+        await expect(vaultSign.transferOwnership(wallet1.address))
+          .to.emit(vault, "OwnershipTransferred")
           .withArgs(deployer.address, wallet1.address);
         await expect(vaultSign.changeStatus(0)).to.be.revertedWith(
           "Ownable: caller is not the owner"
@@ -86,8 +86,8 @@ describe("Vault Contract Owners Feature Test", function () {
 
     describe("renounceOwnership", function () {
       it("should set contract owner to nobody after renouncing", async function () {
-        expect(await vaultWallet1.renounceOwnership())
-          .to.emit("OwnershipTransferred")
+        await expect(vaultWallet1.renounceOwnership())
+          .to.emit(vault, "OwnershipTransferred")
           .withArgs(wallet1.address, ethers.constants.AddressZero);
         expect(await vault.owner()).to.equal(
           ethers.constants.AddressZero,

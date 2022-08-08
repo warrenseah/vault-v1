@@ -7,7 +7,7 @@ const {
 } = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("Vault Add/Amend/Claim Yield Test", function () {
-  let vault, mockToken, MockToken;
+  let vault, mockToken, MockToken, mockTokenSign;
   let deployer, wallet1, wallet2, wallet3;
   let vaultSign, vaultWallet1, vaultWallet2, vaultWallet3;
 
@@ -22,6 +22,7 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
     vault = await Vault.deploy();
     await vault.deployed();
 
+    mockTokenSign = mockToken.connect(deployer);
     vaultSign = vault.connect(deployer);
     vaultWallet1 = vault.connect(wallet1);
     vaultWallet2 = vault.connect(wallet2);
@@ -47,9 +48,9 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
       expect(yieldTokenAmt).to.equal(ethers.utils.parseUnits("100000"));
 
       // approve
-      expect(await mockToken.approve(vault.address, yieldTokenAmt))
-        .to.emit("Approval")
-        .withArgs(deployer, vault, yieldTokenAmt);
+      await expect(mockTokenSign.approve(vault.address, yieldTokenAmt))
+        .to.emit(mockToken, "Approval")
+        .withArgs(deployer.address, vault.address, yieldTokenAmt);
       totalStakesAtTime = await vault.totalStakes();
     });
 
@@ -262,8 +263,8 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
         const adminFee = total.sub(afterFee);
         afterFee = afterFee.toString();
 
-        expect(await vaultWallet1.claimYieldTokens(filterWallet1Stake[0], 1))
-          .to.emit("ClaimedTokens")
+        await expect(vaultWallet1.claimYieldTokens(filterWallet1Stake[0], 1))
+          .to.emit(vault, "ClaimedTokens")
           .withArgs(
             0,
             filterWallet1Stake[0] - 1,
@@ -333,9 +334,9 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
     describe("admin claim profits", function () {
       it("should send bnb to owner", async function () {
         const bnbProfits = ethers.utils.parseUnits("0.3");
-        expect(await vaultSign.withdrawProfits())
+        await expect(vaultSign.withdrawProfits())
           .to.changeEtherBalance(vaultSign, "-300000000000000000")
-          .to.emit("ProfitWithdraw")
+          .to.emit(vault, "ProfitWithdraw")
           .withArgs(0, bnbProfits, ethers.constants.AddressZero);
       });
 
@@ -346,13 +347,13 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
       });
 
       it("should send tokens profits to owner", async function () {
-        expect(await vaultSign.withdrawTokenProfits(mockToken.address))
+        await expect(vaultSign.withdrawTokenProfits(mockToken.address))
           .to.changeTokenBalance(
             mockToken,
             deployer.address,
             "19999999999999999600000"
           )
-          .to.emit("ProfitWithdraw")
+          .to.emit(vault, "ProfitWithdraw")
           .withArgs(1, "19999999999999999600000", mockToken.address);
       });
     });
