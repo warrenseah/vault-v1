@@ -23,40 +23,40 @@ contract Admin is Ownable {
     uint public profits; // bnb profits for admin
     mapping(address => uint) public profitsInToken; // altcoins profits for admin
 
-    event StatusChanged(StatusType indexed _type);
-    event FeeChange(FeeType indexed _type, uint8 amount);
-    event ProfitWithdraw(FeeType _type, uint _amount, address _token);
+    event StatusChanged(StatusType indexed statusType);
+    event FeeChange(FeeType indexed feeType, uint8 amount);
+    event ProfitWithdraw(FeeType feeType, uint amount, address token);
 
-    function amtWithFee(FeeType feeType ,uint _amount) public view returns (uint) {
+    function amtWithFee(FeeType feeType ,uint amount) public view returns (uint) {
         if(feeType == FeeType.Farming) {
-            return uint256((_amount * (100 - farmingFee)) / 100);
+            return uint256((amount * (100 - farmingFee)) / 100);
         } else {
-            return uint256((_amount * (100 - entryFee)) / 100);
+            return uint256((amount * (100 - entryFee)) / 100);
         }   
     }
 
-    function feeToProtocol(FeeType feeType, uint _amount) public view returns(uint) {
+    function feeToProtocol(FeeType feeType, uint amount) public view returns(uint) {
         if(feeType == FeeType.Farming) {
-            return uint256((_amount * farmingFee) / 100);
+            return uint256((amount * farmingFee) / 100);
         } else {
-            return uint256((_amount * entryFee) / 100);
+            return uint256((amount * entryFee) / 100);
         }
     }
 
     // Owner's only
-    function changeFee(FeeType _type, uint8 _fee) external onlyOwner {
-        if(_type == FeeType.Entry) {
-            entryFee = _fee;
-            emit FeeChange(FeeType.Entry, _fee);
+    function changeFee(FeeType feeType, uint8 fee) external onlyOwner {
+        if(feeType == FeeType.Entry) {
+            entryFee = fee;
+            emit FeeChange(FeeType.Entry, fee);
         } else {
-            farmingFee = _fee;
-            emit FeeChange(FeeType.Farming, _fee);
+            farmingFee = fee;
+            emit FeeChange(FeeType.Farming, fee);
         }
     }
 
-    function changeStatus(StatusType _type) external onlyOwner {
-        contractStatus = _type;
-        emit StatusChanged(_type);
+    function changeStatus(StatusType statusType) external onlyOwner {
+        contractStatus = statusType;
+        emit StatusChanged(statusType);
     }
 
     function withdrawProfits() external onlyOwner {
@@ -79,9 +79,9 @@ contract Admin is Ownable {
         emit ProfitWithdraw(FeeType.Farming, withdrawAmt, _token);
     }
 
-    function withdrawTokensToOwner(IERC20 token, uint _amount) external onlyOwner {
-        require(_amount <= token.balanceOf(address(this)), "Not enough token to return");
-        bool success = token.transfer(owner(), _amount);
+    function withdrawTokensToOwner(IERC20 token, uint amount) external onlyOwner {
+        require(amount <= token.balanceOf(address(this)), "Not enough token to return");
+        bool success = token.transfer(owner(), amount);
         require(success, "token transfer failed");
     }
 
