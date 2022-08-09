@@ -50,7 +50,7 @@ contract Vault is Ownable, Admin {
 
     // Token to stakes records
     Yield[] public yields;
-    mapping(address => mapping(uint => mapping(uint => bool))) public addressClaimedYieldRewards; // 1st uint _yieldId 2nd _stakeId
+    mapping(address => mapping(uint => mapping(uint => bool))) public addressClaimedYieldRewards; // 1st uint yieldId 2nd stakeId
     mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
     uint public nextYieldId = 0;
 
@@ -60,7 +60,7 @@ contract Vault is Ownable, Admin {
     event Deposit(address indexed user, uint indexed stakeId, uint amount);
     event PendingWithdrawal(uint indexed withdrawalID, uint indexed stakeId, address indexed user, uint amount);
     event Withdrawn(address indexed user, uint withdrawalID);
-    event YieldEnded(uint indexed _id, address indexed _token, uint _yieldPerTokenStakedPerSec, uint _sinceTime);
+    event YieldEnded(uint indexed id, address indexed token, uint yieldPerTokenStakedPerSec, uint sinceTime);
     event ClaimedTokens(uint indexed yieldId, uint stakeId, address indexed token, address indexed user, uint amount);
 
     receive() external payable {}
@@ -110,10 +110,10 @@ contract Vault is Ownable, Admin {
         stakeOf[msg.sender] += depositWithFee;
     }
 
-    function submitWithdrawal(uint _stakeId) external onlyStatusAbove(1) {
-        require(_stakeId > 0, "stakeId cannot be 0");
-        Stake storage staker = stakes[_stakeId - 1];
-        require(checkUserStakeId(msg.sender, _stakeId), "stakeId must belong to caller");
+    function submitWithdrawal(uint stakeId) external onlyStatusAbove(1) {
+        require(stakeId > 0, "stakeId cannot be 0");
+        Stake storage staker = stakes[stakeId - 1];
+        require(checkUserStakeId(msg.sender, stakeId), "stakeId must belong to caller");
         require(staker.tillTime == 0, "stakeId is already processed");
 
         staker.tillTime = block.timestamp;
@@ -145,7 +145,7 @@ contract Vault is Ownable, Admin {
             end: block.timestamp + duration,
             sent: false
         }));
-        emit PendingWithdrawal(nextWithdrawalID, _stakeId - 1, msg.sender, amount);
+        emit PendingWithdrawal(nextWithdrawalID, stakeId - 1, msg.sender, amount);
         nextWithdrawalID += 1; // increment the nextWithdrawalID
 
         addressToWithdrawalIds[msg.sender].push(withdrawals.length);
@@ -158,36 +158,35 @@ contract Vault is Ownable, Admin {
         if(balanceOf[msg.sender] == 0) {
             delete addressToStakeIds[msg.sender];
         } else {
-            removeStakeIndexFromArray(_stakeId);
+            removeStakeIndexFromArray(stakeId);
         }
     }
 
-    function withdraw(uint _id) external onlyStatusAbove(1) {
-        require(_id > 0, "withdrawId cannot be 0");
-        Withdrawal storage staker = withdrawals[_id - 1];
+    function withdraw(uint id) external onlyStatusAbove(1) {
+        require(id > 0, "withdrawId cannot be 0");
+        Withdrawal storage staker = withdrawals[id - 1];
         require(staker.sent == false, "Withdraw processed already");
-        require(checkUserWithdrawalId(msg.sender, _id), "Withdrawal must submit withdrawal request");
+        require(checkUserWithdrawalId(msg.sender, id), "Withdrawal must submit withdrawal request");
         require(block.timestamp > staker.end, "Timelock is active");
         require(staker.amountInTokens <= address(this).balance, "BNB balance not enough");
 
         staker.sent = true;
+        removeWithdrawalIndexFromArray(id);
         (bool success, ) = payable(msg.sender).call{value: staker.amountInTokens}("");
         require(success, "BNB return failed");
-        emit Withdrawn(msg.sender, _id - 1);
-
-        removeWithdrawalIndexFromArray(_id);
+        emit Withdrawn(msg.sender, id - 1);
     }
 
-    function claimYieldTokens(uint _stakeId, uint _yieldId) external onlyStatusAbove(1) {
-        require(_stakeId > 0 && _yieldId > 0, "id cannot be 0");
-        Yield memory yieldProgram = yields[_yieldId - 1];
-        Stake memory stake = stakes[_stakeId - 1];
-        require(!addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId], "User must not claim rewards already"); 
-        require(checkUserStakeId(msg.sender, _stakeId), "stakeId must belong to caller");
+    function claimYieldTokens(uint stakeId, uint yieldId) external onlyStatusAbove(1) {
+        require(stakeId > 0 && yieldId > 0, "id cannot be 0");
+        Yield memory yieldProgram = yields[yieldId - 1];
+        Stake memory stake = stakes[stakeId - 1];
+        require(!addressClaimedYieldRewards[msg.sender][yieldId][stakeId], "User must not claim rewards already"); 
+        require(checkUserStakeId(msg.sender, stakeId), "stakeId must belong to caller");
         require(yieldProgram.tillTime > 0, "Yield program must have ended.");
         require(yieldProgram.sinceTime > stake.sinceTime, "User must have staked before start of yieldProgram");
         
-        addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId] = true; 
+        addressClaimedYieldRewards[msg.sender][yieldId][stakeId] = true; 
         
         // Calculate rewards
         uint rewards = yieldProgram.yieldPerTokenStaked * stake.amountInTokens / PRECISION_FACTOR;
@@ -195,7 +194,8 @@ contract Vault is Ownable, Admin {
         profitsInToken[yieldProgram.token] += feeToProtocol(FeeType.Farming, rewards);
 
         require(rewardsAfterFee > 0 && rewardsAfterFee <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
-        IERC20(yieldProgram.token).transfer(msg.sender, rewardsAfterFee);
+        bool success = IERC20(yieldProgram.token).transfer(msg.sender, rewardsAfterFee);
+        require(success, "token transfer failed");
         emit ClaimedTokens(yieldProgram.id, stake.id, yieldProgram.token, msg.sender, rewardsAfterFee);
         
         // Register user claimed tokens
@@ -213,24 +213,24 @@ contract Vault is Ownable, Admin {
         balanceOf[_from] -= _shares;
     }
 
-    function removeStakeIndexFromArray(uint _index) private {
+    function removeStakeIndexFromArray(uint index) private {
         // only has 1 stake or stakeId is the last index
-        if(addressToStakeIds[msg.sender].length == 1 || _index == addressToStakeIds[msg.sender].length) {
+        if(addressToStakeIds[msg.sender].length == 1 || index == addressToStakeIds[msg.sender].length) {
             addressToStakeIds[msg.sender].pop();
         } else {
             uint lastIndex = addressToStakeIds[msg.sender].length - 1;
-            addressToStakeIds[msg.sender][_index - 1] = addressToStakeIds[msg.sender][lastIndex]; // overwrite the position with a new value
+            addressToStakeIds[msg.sender][index - 1] = addressToStakeIds[msg.sender][lastIndex]; // overwrite the position with a new value
             addressToStakeIds[msg.sender].pop();
         }
     }
 
-    function removeWithdrawalIndexFromArray(uint _index) private {
+    function removeWithdrawalIndexFromArray(uint index) private {
         // only has 1 stake or stakeId is the last index
-        if(addressToWithdrawalIds[msg.sender].length == 1 || _index == addressToWithdrawalIds[msg.sender].length) {
+        if(addressToWithdrawalIds[msg.sender].length == 1 || index == addressToWithdrawalIds[msg.sender].length) {
             addressToWithdrawalIds[msg.sender].pop();
         } else {
             uint lastIndex = addressToWithdrawalIds[msg.sender].length - 1;
-            addressToWithdrawalIds[msg.sender][_index - 1] = addressToWithdrawalIds[msg.sender][lastIndex]; // overwrite the position with a new value
+            addressToWithdrawalIds[msg.sender][index - 1] = addressToWithdrawalIds[msg.sender][lastIndex]; // overwrite the position with a new value
             addressToWithdrawalIds[msg.sender].pop();
         }
     }
@@ -254,56 +254,56 @@ contract Vault is Ownable, Admin {
         return withdrawals.length;
     }
 
-    function addressToStakeArr(address _user) external view returns(uint[] memory) {
-        return addressToStakeIds[_user];
+    function addressToStakeArr(address user) external view returns(uint[] memory) {
+        return addressToStakeIds[user];
     }
     
-    function addressToWithdrawArr(address _user) external view returns(uint[] memory) {
-        return addressToWithdrawalIds[_user];
+    function addressToWithdrawArr(address user) external view returns(uint[] memory) {
+        return addressToWithdrawalIds[user];
     }
 
-    function checkUserStakeId(address _user, uint _stakeId) public view returns(bool isFound) {
-        uint[] memory stakeArr = addressToStakeIds[_user];
+    function checkUserStakeId(address user, uint stakeId) public view returns(bool isFound) {
+        uint[] memory stakeArr = addressToStakeIds[user];
         isFound = false;
         for(uint i = 0; i < stakeArr.length; i++) {
-            if(stakeArr[i] == _stakeId) {
+            if(stakeArr[i] == stakeId) {
                 isFound = true;
                 break;
             }
         }
     }
 
-    function checkUserWithdrawalId(address _user, uint _withdrawalId) public view returns(bool isFound) {
-        uint[] memory withdrawalArr = addressToWithdrawalIds[_user];
+    function checkUserWithdrawalId(address user, uint withdrawalId) public view returns(bool isFound) {
+        uint[] memory withdrawalArr = addressToWithdrawalIds[user];
         isFound = false;
         for(uint i = 0; i < withdrawalArr.length; i++) {
-            if(withdrawalArr[i] == _withdrawalId) {
+            if(withdrawalArr[i] == withdrawalId) {
                 isFound = true;
                 break;
             }
         }
     }
 
-    function ifStakerExists(address _address) public view returns(bool isFound) {
+    function ifStakerExists(address user) external view returns(bool isFound) {
         isFound = false;
         for(uint i = 0; i < stakes.length; i++) {
-            if(stakes[i].user == _address && stakes[i].tillTime == 0) {
+            if(stakes[i].user == user && stakes[i].tillTime == 0) {
                 isFound = true;
                 break;
             }
         }
     }
 
-    function getClaimsFor(uint _stakeId, uint _yieldId) public view returns(uint, uint) {
-        require(_stakeId > 0 && _yieldId > 0, "id cannot be 0");
-        Yield memory yieldProgram = yields[_yieldId - 1];
-        Stake memory staker = stakes[_stakeId - 1];
+    function getClaimsFor(uint stakeId, uint yieldId) external view returns(uint, uint) {
+        require(stakeId > 0 && yieldId > 0, "id cannot be 0");
+        Yield memory yieldProgram = yields[yieldId - 1];
+        Stake memory staker = stakes[stakeId - 1];
         require(yieldProgram.tillTime > 0, "Yield program must have ended");
-        require(checkUserStakeId(msg.sender, _stakeId), "stakeId must belong to caller");
+        require(checkUserStakeId(msg.sender, stakeId), "stakeId must belong to caller");
         require(staker.tillTime == 0, "User must have tokens staked");
         require(yieldProgram.sinceTime > staker.sinceTime, "User must have staked before start of yieldProgram");
 
-        if(addressClaimedYieldRewards[msg.sender][_yieldId][_stakeId]) {
+        if(addressClaimedYieldRewards[msg.sender][yieldId][stakeId]) {
             return(0, 0);
         }
 
@@ -313,11 +313,11 @@ contract Vault is Ownable, Admin {
         return (rewards, rewardsAfterFee);
     }
 
-    function getPastStakes(address _address) external view returns(uint[] memory) {
+    function getPastStakes(address user) external view returns(uint[] memory) {
         uint[] memory stakesArr = new uint[](stakes.length);
         uint index = 0;
         for(uint i = 0; i < stakes.length; i++) {
-            if(stakes[i].user == _address && stakes[i].tillTime > 0) {
+            if(stakes[i].user == user && stakes[i].tillTime > 0) {
                 stakesArr[index] = stakes[i].id + 1;
                 index += 1;
             }
@@ -354,36 +354,36 @@ contract Vault is Ownable, Admin {
         duration = _seconds;
     }
 
-    function addYieldTokens(uint _sinceTime, uint _totalStake) external onlyOwner {
-        require(_sinceTime > 0 && _totalStake > 0, "Must not be 0");
+    function addYieldTokens(uint sinceTime, uint totalStake) external onlyOwner {
+        require(sinceTime > 0 && totalStake > 0, "Must not be 0");
         yields.push(Yield({
             id: nextYieldId,
             amount: 0,
-            sinceTime: _sinceTime,
+            sinceTime: sinceTime,
             tillTime: 0,
             yieldPerTokenStaked: 0,
-            totalStakeAtTime: _totalStake,
+            totalStakeAtTime: totalStake,
             token: address(0)
         }));
 
         nextYieldId += 1;
     }
 
-    function amendYieldTokens(uint _id, address tokenAddr, uint _deposit, uint _sinceTime, uint _tillTime) external onlyOwner {
-        require(_id > 0, "yieldId cannot be 0");
-        Yield storage yield = yields[_id - 1];
+    function amendYieldTokens(uint id, address tokenAddr, uint _deposit, uint sinceTime, uint tillTime) external onlyOwner {
+        require(id > 0, "yieldId cannot be 0");
+        Yield storage yield = yields[id - 1];
         require(yield.tillTime == 0, "Yield program has ended");
 
         // Either change sinceTime
-        if(_sinceTime != 0) {
-            yield.sinceTime = _sinceTime;
+        if(sinceTime != 0) {
+            yield.sinceTime = sinceTime;
         }
 
         // Or add tillTime and end yield program
 
-        if(_tillTime != 0 && _deposit > 0) {
+        if(tillTime != 0 && _deposit > 0) {
             // yield program has ended
-            yield.tillTime = _tillTime;
+            yield.tillTime = tillTime;
             require(yield.tillTime > yield.sinceTime, "End time must be greater than startTime");
             require(tokenAddr != address(0), "token address cannot be 0");
             
@@ -391,7 +391,8 @@ contract Vault is Ownable, Admin {
             yield.token = tokenAddr;
             yield.amount = _deposit;
             require(_deposit <= IERC20(tokenAddr).balanceOf(msg.sender), "Not enough tokens");
-            IERC20(tokenAddr).transferFrom(owner(), address(this), _deposit);
+            bool success = IERC20(tokenAddr).transferFrom(owner(), address(this), _deposit);
+            require(success, "token transfer failed");
 
             // Calculate yield metrics
             yield.yieldPerTokenStaked = _deposit * PRECISION_FACTOR / yield.totalStakeAtTime;
