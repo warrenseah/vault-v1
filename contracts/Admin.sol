@@ -13,7 +13,8 @@ contract Admin is Ownable {
     
     enum FeeType {
         Entry,
-        Farming
+        Farming,
+        Referral
     }
 
     StatusType public contractStatus = StatusType.Inactive;
@@ -38,6 +39,8 @@ contract Admin is Ownable {
     function feeToProtocol(FeeType feeType, uint amount) public view returns(uint) {
         if(feeType == FeeType.Farming) {
             return uint256((amount * farmingFee) / 100);
+        } else if(feeType == FeeType.Referral) {
+            return uint256((amount * 10) / 100);
         } else {
             return uint256((amount * entryFee) / 100);
         }
