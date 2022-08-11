@@ -2,11 +2,13 @@
 pragma solidity ^0.8.0;
 
 import "./Admin.sol";
+import "./Affiliate.sol";
 
-contract Vault is Ownable, Admin {
+contract Vault is Ownable, Admin, Affiliate {
     
     struct Stake {
         uint id;
+        uint accountId;
         address user;
         uint shares;
         uint amountInTokens;
@@ -51,7 +53,6 @@ contract Vault is Ownable, Admin {
     // Token to stakes records
     Yield[] public yields;
     mapping(address => mapping(uint => mapping(uint => bool))) public addressClaimedYieldRewards; // 1st uint yieldId 2nd stakeId
-    mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
     uint public nextYieldId = 0;
 
     Withdrawal[] public withdrawals;
@@ -63,15 +64,24 @@ contract Vault is Ownable, Admin {
     event YieldEnded(uint indexed id, address indexed token, uint yieldPerTokenStakedPerSec, uint sinceTime);
     event ClaimedTokens(uint indexed yieldId, uint stakeId, address indexed token, address indexed user, uint amount);
 
+    constructor() Affiliate() {}
     receive() external payable {}
 
     // Public functions
-    function deposit() external payable onlyStatusAbove(2) {
+    function deposit(uint referrerID) external payable onlyStatusAbove(2) {
         require(msg.value > 0, "Amount > 0");
         uint depositWithFee = amtWithFee(FeeType.Entry, msg.value);
 
         // register profit
         profits += feeToProtocol(FeeType.Entry, msg.value);
+
+        // Add account
+        uint acctId = addAccount();
+
+        // Register referrer
+        if(referrerID > 0) {
+            addReferrer(idToUser[referrerID]);
+        }
         
         /* Determine amount of shares to mint
         a = amount
@@ -92,6 +102,7 @@ contract Vault is Ownable, Admin {
 
         stakes.push(Stake({
             id: nextStakesId,
+            accountId: acctId,
             user: msg.sender,
             amountInTokens: depositWithFee,
             shares: shares,
@@ -131,6 +142,11 @@ contract Vault is Ownable, Admin {
         */
         uint amount = (staker.shares * totalStakes) / totalSupply;
         require(amount <= stakeOf[msg.sender], "Not enough stakedTokens");
+        
+        // remove parent referredCount
+        if(hasReferrer(msg.sender)) {
+            rmParentReferCount();
+        }
 
         // Remove staked tokens
         totalStakes -= amount;
@@ -191,7 +207,14 @@ contract Vault is Ownable, Admin {
         // Calculate rewards
         uint rewards = yieldProgram.yieldPerTokenStaked * stake.amountInTokens / PRECISION_FACTOR;
         uint rewardsAfterFee = amtWithFee(FeeType.Farming, rewards);
-        profitsInToken[yieldProgram.token] += feeToProtocol(FeeType.Farming, rewards);
+
+        // Pay referrers 2 levels
+        uint profits = feeToProtocol(FeeType.Farming, rewards);
+        uint referralComms = feeToProtocol(FeeType.Referral, rewards);
+        uint referralPayout = payReferral(referralComms, yieldProgram.token);
+
+        // Net will go to smartcontract
+        profitsInToken[yieldProgram.token] += profits - referralPayout;
 
         require(rewardsAfterFee > 0 && rewardsAfterFee <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
         bool success = IERC20(yieldProgram.token).transfer(msg.sender, rewardsAfterFee);
