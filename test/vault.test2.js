@@ -42,7 +42,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
           "contractStatus is not default setting"
         );
         await expect(
-          vaultWallet1.deposit({ value: deposit1 })
+          vaultWallet1.deposit(0, { value: deposit1 })
         ).to.be.revertedWith("Not valid activity");
       });
 
@@ -53,7 +53,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
           "contractStatus is not set to 1"
         );
         await expect(
-          vaultWallet1.deposit({ value: deposit1 })
+          vaultWallet1.deposit(0, { value: deposit1 })
         ).to.be.revertedWith("Not valid activity");
       });
 
@@ -66,7 +66,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
         );
 
         expect(await vault.profits()).to.equal(0, "profits should be 0");
-        await expect(vaultWallet1.deposit({ value: deposit1 }))
+        await expect(vaultWallet1.deposit(0, { value: deposit1 }))
           .to.emit(vault, "Deposit")
           .withArgs(wallet1.address, 0, depositWithFee);
         // check if smartcontract register entryFee profit
@@ -115,7 +115,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
         expect(stakerArray).to.eql([ethers.BigNumber.from("1")]); // need to subtract 1 to get the true stakeId
 
         await expect(
-          vaultWallet2.deposit({ value: deposit1 })
+          vaultWallet2.deposit(0, { value: deposit1 })
         ).to.changeEtherBalance(wallet2, "-1000000000000000000");
         expect(await vault.stakeOf(wallet2.address)).to.equal(
           depositWithFee,
