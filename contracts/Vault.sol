@@ -2,9 +2,8 @@
 pragma solidity ^0.8.0;
 
 import "./Admin.sol";
-import "./Affiliate.sol";
 
-contract Vault is Ownable, Admin, Affiliate {
+contract Vault is Admin {
     
     struct Stake {
         uint id;
@@ -37,6 +36,7 @@ contract Vault is Ownable, Admin, Affiliate {
 
     uint public constant PRECISION_FACTOR = 10 ** 12;
     uint public duration = 1 minutes;
+    uint public minEtherAddReferrerCount = 3 ether; // set to 1000 usd
     uint public nextWithdrawalID = 0;
     
     // Vault shares
@@ -64,7 +64,6 @@ contract Vault is Ownable, Admin, Affiliate {
     event YieldEnded(uint indexed id, address indexed token, uint yieldPerTokenStakedPerSec, uint sinceTime);
     event ClaimedTokens(uint indexed yieldId, uint stakeId, address indexed token, address indexed user, uint amount);
 
-    constructor() Affiliate() {}
     receive() external payable {}
 
     // Public functions
@@ -75,11 +74,11 @@ contract Vault is Ownable, Admin, Affiliate {
         // register profit
         profits += feeToProtocol(FeeType.Entry, msg.value);
 
-        // Add account
+        // Add account or update if have account
         uint acctId = addAccount();
 
-        // Register referrer
-        if(referrerID > 0) {
+        // Register referrer if .referrer is empty
+        if(!hasReferrer(msg.sender) && referrerID > 0 && msg.value >= minEtherAddReferrerCount) {
             addReferrer(idToUser[referrerID]);
         }
         
@@ -148,6 +147,9 @@ contract Vault is Ownable, Admin, Affiliate {
             rmParentReferCount();
         }
 
+        //update account timestamp lastActive
+        updateActiveTimestamp(msg.sender);
+
         // Remove staked tokens
         totalStakes -= amount;
         stakeOf[msg.sender] -= amount;
@@ -173,6 +175,8 @@ contract Vault is Ownable, Admin, Affiliate {
          // If burning entire shares, remove from staker otherwise do nothing
         if(balanceOf[msg.sender] == 0) {
             delete addressToStakeIds[msg.sender];
+            // set affiliate.accounts[msg.sender].haveStakes
+            changeUserHaveStakes();
         } else {
             removeStakeIndexFromArray(stakeId);
         }
@@ -210,19 +214,22 @@ contract Vault is Ownable, Admin, Affiliate {
 
         // Pay referrers 2 levels
         uint profits = feeToProtocol(FeeType.Farming, rewards);
-        uint referralComms = feeToProtocol(FeeType.Referral, rewards);
-        uint referralPayout = payReferral(referralComms, yieldProgram.token);
+        uint referralPayout = payReferral(rewards, yieldProgram.token);
 
         // Net will go to smartcontract
         profitsInToken[yieldProgram.token] += profits - referralPayout;
 
-        require(rewardsAfterFee > 0 && rewardsAfterFee <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
-        bool success = IERC20(yieldProgram.token).transfer(msg.sender, rewardsAfterFee);
+        // Register user claimed tokens
+        uint tokenRewards = tokensOfUserBalance[yieldProgram.token][msg.sender];
+        tokenRewards += rewardsAfterFee; // withdraw yield with any referral comms
+        tokensOfUserBalance[yieldProgram.token][msg.sender] = 0; // set to 0 to reset token yield counter available for withdrawal
+
+        require(tokenRewards > 0 && tokenRewards <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
+        bool success = IERC20(yieldProgram.token).transfer(msg.sender, tokenRewards);
         require(success, "token transfer failed");
         emit ClaimedTokens(yieldProgram.id, stake.id, yieldProgram.token, msg.sender, rewardsAfterFee);
         
-        // Register user claimed tokens
-        tokensOfUserBalance[yieldProgram.token][msg.sender] += rewardsAfterFee;
+        
     }
 
     // Private functions
@@ -375,6 +382,10 @@ contract Vault is Ownable, Admin, Affiliate {
     // Owner's only
     function changeDuration(uint _seconds) external onlyOwner {
         duration = _seconds;
+    }
+
+    function changeMinEtherAddCount(uint minAmount) external onlyOwner {
+        minEtherAddReferrerCount = minAmount;
     }
 
     function addYieldTokens(uint sinceTime, uint totalStake) external onlyOwner {
