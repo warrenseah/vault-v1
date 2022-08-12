@@ -42,7 +42,7 @@ describe("Vault Contract Owners Feature Test", function () {
       await vaultSign.changeStatus(2);
       // Do deposit
       const deposit1 = ethers.utils.parseUnits("1");
-      await vaultWallet1.deposit({ value: deposit1 });
+      await vaultWallet1.deposit(0, { value: deposit1 });
       expect(await vaultSign.withdrawBNBToOwner()).to.changeEtherBalance(vaultSign, `-${deposit1.toString()}`);
     });
 

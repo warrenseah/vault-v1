@@ -42,8 +42,8 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
       const deposit2 = ethers.utils.parseUnits("4");
       const deposit2WithFee = await vault.amtWithFee(0, deposit2);
 
-      await vaultWallet1.deposit({ value: deposit1 });
-      await vaultWallet2.deposit({ value: deposit2 });
+      await vaultWallet1.deposit(0, { value: deposit1 });
+      await vaultWallet2.deposit(0, { value: deposit2 });
 
       expect(yieldTokenAmt).to.equal(ethers.utils.parseUnits("100000"));
 
@@ -307,7 +307,7 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
 
       it("should revert when user deposit after the start of yield programme", async function () {
         // new user deposit
-        await vaultWallet3.deposit({ value: ethers.utils.parseUnits("1") });
+        await vaultWallet3.deposit(0, { value: ethers.utils.parseUnits("1") });
         await expect(vaultWallet3.claimYieldTokens(3, 1)).to.be.revertedWith(
           "User must have staked before start of yieldProgram"
         );
