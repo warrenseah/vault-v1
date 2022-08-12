@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./Ownable.sol";
-import "./IERC20.sol";
+import "./Affiliate.sol";
 
-contract Admin is Ownable {
+contract Admin is Affiliate {
     enum StatusType {
         Inactive, // both deposit and withdrawal are inactive
         DepositInactive, // Not accepting deposits
@@ -13,9 +12,10 @@ contract Admin is Ownable {
     
     enum FeeType {
         Entry,
-        Farming,
-        Referral
+        Farming
     }
+
+    constructor() Affiliate() {}
 
     StatusType public contractStatus = StatusType.Inactive;
 
@@ -39,8 +39,6 @@ contract Admin is Ownable {
     function feeToProtocol(FeeType feeType, uint amount) public view returns(uint) {
         if(feeType == FeeType.Farming) {
             return uint256((amount * farmingFee) / 100);
-        } else if(feeType == FeeType.Referral) {
-            return uint256((amount * 10) / 100);
         } else {
             return uint256((amount * entryFee) / 100);
         }
@@ -71,15 +69,27 @@ contract Admin is Ownable {
         require(success, "BNB Profits withdrawal failed");
     }
 
-    function withdrawTokenProfits(address _token) external onlyOwner {
-        require(profitsInToken[_token] > 0, "Not enough tokens to withdraw");
-        uint withdrawAmt = profitsInToken[_token];
-        profitsInToken[_token] = 0;
+    function withdrawTokenProfits(address _token) external {
         IERC20 token = IERC20(_token);
-        require(withdrawAmt <= token.balanceOf(address(this)), "Not enough token to send");
-        bool success = token.transfer(msg.sender, withdrawAmt);
-        require(success, "token transfer failed");
-        emit ProfitWithdraw(FeeType.Farming, withdrawAmt, _token);
+        if(msg.sender == owner()) {
+            // owner workflow
+            require(profitsInToken[_token] > 0, "Not enough tokens to withdraw");       
+            uint withdrawAmt = profitsInToken[_token];
+            profitsInToken[_token] = 0;
+            require(withdrawAmt <= token.balanceOf(address(this)), "Not enough token to send");
+            bool success = token.transfer(msg.sender, withdrawAmt);
+            require(success, "token transfer failed");
+            emit ProfitWithdraw(FeeType.Farming, withdrawAmt, _token);
+            return;
+        } else {
+            // user workflow
+            uint tokenBalance = tokensOfUserBalance[_token][msg.sender];
+            tokensOfUserBalance[_token][msg.sender] = 0;
+            updateActiveTimestamp(msg.sender);
+            require(tokenBalance > 0 && tokenBalance <= token.balanceOf(address(this)), "tokenBalance not enough");
+            bool success = token.transfer(msg.sender, tokenBalance);
+            require(success, "token transfer failed");
+        }
     }
 
     function withdrawTokensToOwner(IERC20 token, uint amount) external onlyOwner {
