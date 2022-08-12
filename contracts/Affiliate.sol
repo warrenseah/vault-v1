@@ -30,6 +30,7 @@ contract Affiliate is Ownable {
     address referrer;
     uint referredCount;
     uint lastActiveTimestamp;
+    bool haveStakes;
   }
 
   /**
@@ -51,13 +52,13 @@ contract Affiliate is Ownable {
   mapping(uint => address) public idToUser;
   mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
 
-  uint256[] levelRate;
-  uint256 referralBonus;
-  uint256 decimals;
-  uint256 secondsUntilInactive = 120 days;
-  uint256 nextAccountId = 1;
-  bool onlyRewardActiveReferrers;
-  RefereeBonusRate[] refereeBonusRateMap;
+  uint256[] public levelRate;
+  uint256 public referralBonus;
+  uint256 public decimals;
+  uint256 public secondsUntilInactive = 120 days;
+  uint256 public nextAccountId = 1;
+  bool public onlyRewardActiveReferrers;
+  RefereeBonusRate[] public refereeBonusRateMap;
 
   constructor(
     // uint _decimals,
@@ -93,7 +94,7 @@ contract Affiliate is Ownable {
     // }
   }
 
-  function sum(uint[] memory data) public pure returns (uint) {
+  function sum(uint[] memory data) internal pure returns (uint) {
     uint S;
     for(uint i;i < data.length;i++) {
       S += data[i];
@@ -120,7 +121,7 @@ contract Affiliate is Ownable {
    * @dev Given a user amount to calc in which rate period
    * @param amount The number of referrees
    */
-  function getRefereeBonusRate(uint256 amount) public view returns(uint256) {
+  function getRefereeBonusRate(uint256 amount) internal view returns(uint256) {
     uint rate = refereeBonusRateMap[0].rate;
     for(uint i = 1; i < refereeBonusRateMap.length; i++) {
       if (amount < refereeBonusRateMap[i].lowerBound) {
@@ -156,6 +157,7 @@ contract Affiliate is Ownable {
   function addAccount() internal returns(uint accountId) {
       if(accounts[msg.sender].id != 0) {
           // account already registered and update lastActive
+          accounts[msg.sender].haveStakes = true;
           updateActiveTimestamp(msg.sender);
           return accounts[msg.sender].id;
       } 
@@ -166,7 +168,8 @@ contract Affiliate is Ownable {
         id: accountId,
         referrer: payable(address(0)),
         referredCount: 0,
-        lastActiveTimestamp: block.timestamp
+        lastActiveTimestamp: block.timestamp,
+        haveStakes: true
       });
       // add id to user address mapping
       idToUser[accountId] = msg.sender;
@@ -192,6 +195,11 @@ contract Affiliate is Ownable {
 
     Account storage userAccount = accounts[msg.sender];
     Account storage parentAccount = accounts[referrer];
+    // People who dont have account will not be able to be referrer
+    if(!parentAccount.haveStakes) {
+      emit RegisteredRefererFailed(msg.sender, referrer, "Referrer does not have stake");
+      return false;
+    }
 
     userAccount.referrer = referrer;
     userAccount.lastActiveTimestamp = getTime();
@@ -202,7 +210,13 @@ contract Affiliate is Ownable {
   }
 
   function rmParentReferCount() internal {
-      accounts[accounts[msg.sender].referrer].referredCount -= 1;
+    accounts[accounts[msg.sender].referrer].referredCount -= 1;
+    updateActiveTimestamp(msg.sender);
+  }
+
+  function changeUserHaveStakes() internal {
+    accounts[msg.sender].haveStakes = false;
+    updateActiveTimestamp(msg.sender);
   }
 
   /**
@@ -250,11 +264,11 @@ contract Affiliate is Ownable {
     emit UpdatedUserLastActiveTime(user, timestamp);
   }
 
-  function setSecondsUntilInactive(uint _secondsUntilInactive) public onlyOwner {
+  function setSecondsUntilInactive(uint _secondsUntilInactive) external onlyOwner {
     secondsUntilInactive = _secondsUntilInactive;
   }
 
-  function setOnlyRewardAActiveReferrers(bool _onlyRewardActiveReferrers) public onlyOwner {
+  function setOnlyRewardAActiveReferrers(bool _onlyRewardActiveReferrers) external onlyOwner {
     onlyRewardActiveReferrers = _onlyRewardActiveReferrers;
   }
 }
