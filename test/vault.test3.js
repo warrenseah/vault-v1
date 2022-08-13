@@ -279,11 +279,12 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
 
         expect(await vault.addressClaimedYieldRewards(wallet1.address, 1, 1)).to
           .be.true;
+
         expect(
           await vault.tokensOfUserBalance(mockToken.address, wallet1.address)
         ).to.equal(
-          afterFee,
-          "Claim token amount not reflected on tokensOfUserBalance"
+          0,
+          "Yield token for user was not set to 0"
         );
 
         // check admin profits
