@@ -57,6 +57,7 @@ contract Affiliate is Ownable {
   uint256 public decimals;
   uint256 public secondsUntilInactive = 120 days;
   uint256 public nextAccountId = 1;
+  uint256 public minEtherAddReferrerCount = 3 ether; // set to 1000 usd
   bool public onlyRewardActiveReferrers;
   RefereeBonusRate[] public refereeBonusRateMap;
 
@@ -270,5 +271,9 @@ contract Affiliate is Ownable {
 
   function setOnlyRewardAActiveReferrers(bool _onlyRewardActiveReferrers) external onlyOwner {
     onlyRewardActiveReferrers = _onlyRewardActiveReferrers;
+  }
+
+  function changeMinEtherAddCount(uint minAmount) external onlyOwner {
+        minEtherAddReferrerCount = minAmount;
   }
 }

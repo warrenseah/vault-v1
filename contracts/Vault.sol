@@ -36,7 +36,6 @@ contract Vault is Admin {
 
     uint public constant PRECISION_FACTOR = 10 ** 12;
     uint public duration = 1 minutes;
-    uint public minEtherAddReferrerCount = 3 ether; // set to 1000 usd
     uint public nextWithdrawalID = 0;
     
     // Vault shares
@@ -382,10 +381,6 @@ contract Vault is Admin {
     // Owner's only
     function changeDuration(uint _seconds) external onlyOwner {
         duration = _seconds;
-    }
-
-    function changeMinEtherAddCount(uint minAmount) external onlyOwner {
-        minEtherAddReferrerCount = minAmount;
     }
 
     function addYieldTokens(uint sinceTime, uint totalStake) external onlyOwner {
