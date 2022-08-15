@@ -19,8 +19,8 @@ contract Admin is Affiliate {
 
     StatusType public contractStatus = StatusType.Inactive;
 
-    uint8 public entryFee = 5;
-    uint8 public farmingFee = 20;
+    uint8 public entryFee = 1;
+    uint8 public farmingFee = 30;
     uint public profits; // bnb profits for admin
     mapping(address => uint) public profitsInToken; // altcoins profits for admin
 

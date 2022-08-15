@@ -49,12 +49,12 @@ describe("Vault Contract General Test", function () {
     const defaultConfig = {
       contractStatus: 0, // Inactive, 1: DepositInactive, 2: Active
       duration: 60, // 1 min
-      entryFee: 5,
-      farmingFee: 20,
+      entryFee: 1,
+      farmingFee: 30,
       profits: 0,
       decimals: 1000,
       referralBonus: 100,
-      secondsUntilInactive: 86400,
+      secondsUntilInactive: 86400, // 1 day in secs
       nextAccountId: 1,
       minEtherAddReferrerCount: ethers.utils.parseUnits("3"),
       onlyRewardActiveReferrers: false,
@@ -153,7 +153,7 @@ describe("Vault Contract General Test", function () {
       status: 2,
       duration: 120,
       minEtherAddReferrerCount: ethers.utils.parseUnits("1"),
-      secondsUntilInactive: 10368000, // one day in seconds
+      secondsUntilInactive: 10368000, // 4months in secs
       onlyRewardActiveReferrers: true
     };
 
