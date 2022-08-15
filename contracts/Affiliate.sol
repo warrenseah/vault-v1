@@ -53,13 +53,15 @@ contract Affiliate is Ownable {
   mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
 
   uint256[] public levelRate;
+  RefereeBonusRate[] public refereeBonusRateMap;
+
   uint256 public referralBonus;
   uint256 public decimals;
-  uint256 public secondsUntilInactive = 120 days;
+  uint256 public secondsUntilInactive = 1 days;
   uint256 public nextAccountId = 1;
   uint256 public minEtherAddReferrerCount = 3 ether; // set to 1000 usd
   bool public onlyRewardActiveReferrers;
-  RefereeBonusRate[] public refereeBonusRateMap;
+  
 
   constructor(
     // uint _decimals,
