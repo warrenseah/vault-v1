@@ -79,6 +79,9 @@ contract Vault is Admin {
         // Register referrer if .referrer is empty
         if(!hasReferrer(msg.sender) && referrerID > 0 && msg.value >= minEtherAddReferrerCount) {
             addReferrer(idToUser[referrerID]);
+        } else {
+            address parent = accounts[msg.sender].referrer;
+            emit RegisteredRefererFailed(msg.sender, parent, "Address have been registered upline");
         }
         
         /* Determine amount of shares to mint
