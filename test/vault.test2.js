@@ -107,6 +107,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
 
         const staker = await vault.stakes(0);
         expect(staker.id).to.equal(0, "stake index must be 0");
+        expect(staker.accountId).to.equal(1, "accountId is not incrementing");
         expect(staker.user).to.equal(wallet1.address, "staker is not wallet1");
         expect(staker.shares).to.equal(
           depositWithFee,
@@ -134,6 +135,10 @@ describe("Vault Deposit/Withdrawal Test", function () {
         expect(await vault.nextStakesId()).to.equal(
           2,
           "nextStakesId should increment 1"
+        );
+        expect(await vault.nextAccountId()).to.equal(
+          3,  
+          "nextAccountId should increment 1"
         );
         expect(await vault.profits()).to.equal(
           profitsBNB.mul("2"),
