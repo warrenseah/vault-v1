@@ -11,6 +11,17 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
   let deployer, wallet1, wallet2, wallet3;
   let vaultSign, vaultWallet1, vaultWallet2, vaultWallet3;
 
+  const statusType = {
+    Inactive: 0,
+    DepositInactive: 1,
+    Active: 2
+  };
+
+  const feeType = {
+    Entry: 0,
+    Farming: 1
+  };
+
   async function deployContractsFixture() {
     MockToken = await ethers.getContractFactory("MockToken");
     mockToken = await MockToken.deploy();
@@ -33,14 +44,14 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
 
     before(async function () {
       await loadFixture(deployContractsFixture); // refresh states back to initial
-      await vaultSign.changeStatus(2);
+      await vaultSign.changeStatus(statusType.Active);
       yieldTokenAmt = await mockToken.balanceOf(deployer.address);
 
       const deposit1 = ethers.utils.parseUnits("1");
-      const deposit1WithFee = await vault.amtWithFee(0, deposit1);
+      const deposit1WithFee = await vault.amtWithFee(feeType.Entry, deposit1);
 
       const deposit2 = ethers.utils.parseUnits("4");
-      const deposit2WithFee = await vault.amtWithFee(0, deposit2);
+      const deposit2WithFee = await vault.amtWithFee(feeType.Entry, deposit2);
 
       await vaultWallet1.deposit(0, { value: deposit1 });
       await vaultWallet2.deposit(0, { value: deposit2 });
@@ -296,7 +307,7 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
         await expect(vaultWallet2.claimYieldTokens(2, 1)).to.changeTokenBalance(
           mockToken,
           wallet2,
-          "63999999999999998720000"
+          "55999999999999999944000"
         );
       });
 
@@ -334,11 +345,11 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
 
     describe("admin claim profits", function () {
       it("should send bnb to owner", async function () {
-        const bnbProfits = ethers.utils.parseUnits("0.3");
+        const bnbProfits = ethers.utils.parseUnits("0.06"); // 6bnb deposit from 3 depositors
         await expect(vaultSign.withdrawProfits())
-          .to.changeEtherBalance(vaultSign, "-300000000000000000")
+          .to.changeEtherBalance(vaultSign, "-60000000000000000")
           .to.emit(vault, "ProfitWithdraw")
-          .withArgs(0, bnbProfits, ethers.constants.AddressZero);
+          .withArgs(feeType.Entry, bnbProfits, ethers.constants.AddressZero);
       });
 
       it("should revert if profits is 0", async function () {
@@ -352,10 +363,10 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
           .to.changeTokenBalance(
             mockToken,
             deployer.address,
-            "19999999999999999600000"
+            "29999999999999999970000"
           )
           .to.emit(vault, "ProfitWithdraw")
-          .withArgs(1, "19999999999999999600000", mockToken.address);
+          .withArgs(feeType.Farming, "29999999999999999970000", mockToken.address);
       });
     });
   });
