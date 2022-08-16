@@ -11,6 +11,17 @@ describe("Vault Contract General Test", function () {
   let deployer, wallet1, wallet2, wallet3;
   let vaultSign, vaultWallet1, vaultWallet2, vaultWallet3;
 
+  const statusType = {
+    Inactive: 0,
+    DepositInactive: 1,
+    Active: 2
+  };
+
+  const feeType = {
+    Entry: 0,
+    Farming: 1
+  };
+
   async function deployContractsFixture() {
     MockToken = await ethers.getContractFactory("MockToken");
     mockToken = await MockToken.deploy();
@@ -47,7 +58,7 @@ describe("Vault Contract General Test", function () {
   describe("Default Settings", function () {
 
     const defaultConfig = {
-      contractStatus: 0, // Inactive, 1: DepositInactive, 2: Active
+      contractStatus: statusType.Inactive, // Inactive, 1: DepositInactive, 2: Active
       duration: 60, // 1 min
       entryFee: 1,
       farmingFee: 30,
@@ -150,7 +161,7 @@ describe("Vault Contract General Test", function () {
     const change = {
       entryFee: 3,
       farmingFee: 10,
-      status: 2,
+      status: statusType.Active,
       duration: 120,
       minEtherAddReferrerCount: ethers.utils.parseUnits("1"),
       secondsUntilInactive: 10368000, // 4months in secs
