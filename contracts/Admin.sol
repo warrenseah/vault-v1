@@ -12,7 +12,8 @@ contract Admin is Affiliate {
     
     enum FeeType {
         Entry,
-        Farming
+        Farming,
+        Referral
     }
 
     constructor() Affiliate() {}
@@ -26,7 +27,7 @@ contract Admin is Affiliate {
 
     event StatusChanged(StatusType indexed statusType);
     event FeeChange(FeeType indexed feeType, uint8 amount);
-    event ProfitWithdraw(FeeType feeType, uint amount, address token);
+    event ProfitWithdraw(FeeType feeType, uint amount, address token, address userAddr);
 
     function amtWithFee(FeeType feeType ,uint amount) public view returns (uint) {
         if(feeType == FeeType.Farming) {
@@ -65,7 +66,7 @@ contract Admin is Affiliate {
         uint withdrawAmt = profits;
         profits = 0;
         (bool success, ) = payable(msg.sender).call{ value: withdrawAmt }("");
-        emit ProfitWithdraw(FeeType.Entry, withdrawAmt, address(0));
+        emit ProfitWithdraw(FeeType.Entry, withdrawAmt, address(0), msg.sender);
         require(success, "BNB Profits withdrawal failed");
     }
 
@@ -79,7 +80,7 @@ contract Admin is Affiliate {
             require(withdrawAmt <= token.balanceOf(address(this)), "Not enough token to send");
             bool success = token.transfer(msg.sender, withdrawAmt);
             require(success, "token transfer failed");
-            emit ProfitWithdraw(FeeType.Farming, withdrawAmt, _token);
+            emit ProfitWithdraw(FeeType.Farming, withdrawAmt, _token, msg.sender);
             return;
         } else {
             // user workflow
@@ -88,6 +89,7 @@ contract Admin is Affiliate {
             updateActiveTimestamp(msg.sender);
             require(tokenBalance > 0 && tokenBalance <= token.balanceOf(address(this)), "tokenBalance not enough");
             bool success = token.transfer(msg.sender, tokenBalance);
+            emit ProfitWithdraw(FeeType.Referral, tokenBalance, _token, msg.sender);
             require(success, "token transfer failed");
         }
     }
