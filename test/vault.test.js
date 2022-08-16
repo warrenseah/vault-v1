@@ -18,8 +18,9 @@ describe("Vault Contract General Test", function () {
 
   const feeType = {
     Entry: 0,
-    Farming: 1
-  };
+    Farming: 1,
+    Referral: 2
+};
 
   async function deployContractsFixture() {
     MockToken = await ethers.getContractFactory("MockToken");
