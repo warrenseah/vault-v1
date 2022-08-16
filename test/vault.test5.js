@@ -48,9 +48,9 @@ describe("Vault Contract Owners Feature Test", function () {
     it("should transfer tokens to owner", async function() {
       const tokenAmt = ethers.utils.parseUnits('10000');
       // admin transfer some tokens to vault contract  
-      expect( await mockTokenSign.transfer(vault.address, tokenAmt)).to.changeTokenBalance(mockTokenSign, vault, tokenAmt);
+      await mockTokenSign.transfer(vault.address, tokenAmt);
       // admin call withdraw tokens from vault contract
-      expect(await vaultSign.withdrawTokensToOwner(mockToken.address, tokenAmt)).to.changeTokenBalance(vault, deployer, tokenAmt);
+      await expect(vaultSign.withdrawTokensToOwner(mockToken.address, tokenAmt)).to.changeTokenBalance(mockToken, deployer, tokenAmt);
     });
   });
 
