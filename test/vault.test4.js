@@ -9,8 +9,8 @@ const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
 describe("Vault Affiliate Test", function () {
     let vault, mockToken, MockToken, mockTokenSign;
-    let deployer, wallet1, wallet2, wallet3;
-    let vaultSign, vaultWallet1, vaultWallet2, vaultWallet3;
+    let deployer, wallet1, wallet2, wallet3, wallet4;
+    let vaultSign, vaultWallet1, vaultWallet2, vaultWallet4;
 
     const statusType = {
         Inactive: 0,
@@ -29,7 +29,7 @@ describe("Vault Affiliate Test", function () {
         mockToken = await MockToken.deploy();
         await mockToken.deployed();
 
-        [deployer, wallet1, wallet2, wallet3] = await ethers.getSigners();
+        [deployer, wallet1, wallet2, wallet3, wallet4] = await ethers.getSigners();
 
         const Vault = await ethers.getContractFactory("Vault");
         vault = await Vault.deploy();
@@ -40,10 +40,11 @@ describe("Vault Affiliate Test", function () {
         vaultWallet1 = vault.connect(wallet1);
         vaultWallet2 = vault.connect(wallet2);
         vaultWallet3 = vault.connect(wallet3);
+        vaultWallet4 = vault.connect(wallet4);
     }
 
     describe("Deposit", function () {
-        let firstAccount, refereeAccount1, refereeAccount2, yieldTokenAmt;
+        let firstAccount, refereeAccount1, refereeAccount2, refereeAccount3, yieldTokenAmt;
 
         before(async function () {
             await loadFixture(deployContractsFixture); // refresh states back to initial
@@ -195,6 +196,18 @@ describe("Vault Affiliate Test", function () {
             // check referrers withdrawYieldToken with event fired
             await expect(vaultWallet2.withdrawTokenProfits(mockToken.address)).to.emit(vaultWallet2, "ProfitWithdraw").withArgs(feeType.Referral, anyValue, mockToken.address, wallet2.address);
             await expect(vaultWallet1.withdrawTokenProfits(mockToken.address)).to.emit(vaultWallet1, "ProfitWithdraw").withArgs(feeType.Referral, anyValue, mockToken.address, wallet1.address);
+        });
+
+        it("should not update referredCount when deposit is less than 3 bnb", async function() {
+            await vaultWallet4.deposit(2, { value: ethers.utils.parseUnits("1") });
+            const referrerAddr = await vault.idToUser(2);
+            expect(wallet2.address).to.equal(referrerAddr, "referral address account not the same");
+            
+            refereeAccount3 = await vault.accounts(wallet4.address);
+            expect(refereeAccount3.referrer).to.equal(ethers.constants.AddressZero, "referrer is not address(0)");
+            
+            refereeAccount1 = await vault.accounts(wallet2.address);
+            expect(refereeAccount1.referredCount).to.equal(1, "referredCount should not incrememt because deposit is less than 3 bnb");
         });
     });
 });
