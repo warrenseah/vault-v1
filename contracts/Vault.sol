@@ -77,11 +77,14 @@ contract Vault is Admin {
         uint acctId = addAccount();
 
         // Register referrer if .referrer is empty
-        if(!hasReferrer(msg.sender) && referrerID > 0 && msg.value >= minEtherAddReferrerCount) {
-            addReferrer(idToUser[referrerID]);
-        } else {
-            address parent = accounts[msg.sender].referrer;
-            emit RegisteredRefererFailed(msg.sender, parent, "Address have been registered upline");
+        if(referrerID > 0 && msg.value > minEtherAddReferrerCount) {
+            if(!hasReferrer(msg.sender)) {
+                addReferrer(idToUser[referrerID]);
+            } else {
+                // have referrer already
+                address parent = accounts[msg.sender].referrer;
+                emit RegisteredRefererFailed(msg.sender, parent, "Address have been registered upline");
+            }
         }
         
         /* Determine amount of shares to mint
@@ -143,14 +146,6 @@ contract Vault is Admin {
         */
         uint amount = (staker.shares * totalStakes) / totalSupply;
         require(amount <= stakeOf[msg.sender], "Not enough stakedTokens");
-        
-        // remove parent referredCount
-        if(hasReferrer(msg.sender)) {
-            rmParentReferCount();
-        }
-
-        //update account timestamp lastActive
-        updateActiveTimestamp(msg.sender);
 
         // Remove staked tokens
         totalStakes -= amount;
@@ -177,10 +172,18 @@ contract Vault is Admin {
          // If burning entire shares, remove from staker otherwise do nothing
         if(balanceOf[msg.sender] == 0) {
             delete addressToStakeIds[msg.sender];
+            
+            // remove parent.referredCount 
+            if(hasReferrer(msg.sender)) {
+                rmParentReferCount();
+            } 
+
             // set affiliate.accounts[msg.sender].haveStakes
             changeUserHaveStakes();
         } else {
             removeStakeIndexFromArray(stakeId);
+            //update account timestamp lastActive
+            updateActiveTimestamp(msg.sender);
         }
     }
 
@@ -214,12 +217,16 @@ contract Vault is Admin {
         uint rewards = yieldProgram.yieldPerTokenStaked * stake.amountInTokens / PRECISION_FACTOR;
         uint rewardsAfterFee = amtWithFee(FeeType.Farming, rewards);
 
-        // Pay referrers 2 levels
+        // Pay admin and referrers 2 levels
         uint profits = feeToProtocol(FeeType.Farming, rewards);
-        uint referralPayout = payReferral(rewards, yieldProgram.token);
-
-        // Net will go to smartcontract
-        profitsInToken[yieldProgram.token] += profits - referralPayout;
+        if(hasReferrer(msg.sender)) {
+            uint referralPayout = payReferral(rewards, yieldProgram.token);
+            // Net will go to smartcontract
+            profitsInToken[yieldProgram.token] += profits - referralPayout;
+        } else {
+            profitsInToken[yieldProgram.token] += profits;
+            updateActiveTimestamp(msg.sender);
+        }
 
         // Register user claimed tokens
         uint tokenRewards = tokensOfUserBalance[yieldProgram.token][msg.sender];
@@ -230,8 +237,6 @@ contract Vault is Admin {
         bool success = IERC20(yieldProgram.token).transfer(msg.sender, tokenRewards);
         require(success, "token transfer failed");
         emit ClaimedTokens(yieldProgram.id, stake.id, yieldProgram.token, msg.sender, rewardsAfterFee);
-        
-        
     }
 
     // Private functions
@@ -286,7 +291,7 @@ contract Vault is Admin {
         return withdrawals.length;
     }
 
-    function addressToStakeArr(address user) external view returns(uint[] memory) {
+    function addressToStakeArr(address user) public view returns(uint[] memory) {
         return addressToStakeIds[user];
     }
     
