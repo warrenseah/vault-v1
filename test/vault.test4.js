@@ -210,4 +210,39 @@ describe("Vault Affiliate Test", function () {
             expect(refereeAccount1.referredCount).to.equal(1, "referredCount should not incrememt because deposit is less than 3 bnb");
         });
     });
+
+    describe("submitWithdrawal and withdraw func", function() {
+        let firstAccount, refereeAccount1, refereeAccount2, refereeAccount3;
+        it("should update timestamp only when submitWithdraw", async function() {
+            refereeAccount2 = await vault.accounts(wallet3.address);
+            let stakeArr3 = await vault.addressToStakeArr(wallet3.address);
+            expect(stakeArr3.length).to.equal(2, "user does not have more than 1 stakes");
+
+            // submitWithdraw for stake.id 3
+            await vaultWallet3.submitWithdrawal(stakeArr3[0].toString());
+
+            // should decrement by 1 in stake3Arr
+            const latestRefereeAccount2 = await vault.accounts(wallet3.address);
+            stakeArr3 = await vault.addressToStakeArr(wallet3.address);
+            expect(stakeArr3.length).to.equal(1, "user stakedArr should decrement by 1 stake");
+            expect(latestRefereeAccount2.referrer).to.equal(wallet2.address, "referrer address remains");
+            expect(latestRefereeAccount2.lastActiveTimestamp).to.be.gt(refereeAccount2.lastActiveTimestamp, "lastActiveTimestamp is not updated");
+            refereeAcount2 = latestRefereeAccount2; // update global state to latest
+        });
+
+        it("should decrement parent.referredCount and set user.haveStakes to false when user withdraw final stake", async function() {
+            refereeAccount1 = await vault.accounts(wallet2.address);
+            expect(refereeAccount1.referredCount).to.equal(1, "referredCount should not decrement");
+
+            // refereeAccount2 withdraw last and final stake id 4
+            await vaultWallet3.submitWithdrawal(4);
+            const latestRefereeAccount2 = await vault.accounts(wallet3.address);
+            const stakeArr3 = await vault.addressToStakeArr(wallet3.address);
+            expect(stakeArr3.length).to.equal(0, "user stakedArr should be 0");
+            expect(latestRefereeAccount2.haveStakes).to.be.false;
+
+            refereeAccount1 = await vault.accounts(wallet2.address);
+            expect(refereeAccount1.referredCount).to.equal(0, "referredCount did not decrement");
+        });
+    });
 });
