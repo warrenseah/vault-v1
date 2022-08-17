@@ -77,7 +77,7 @@ contract Vault is Admin {
         uint acctId = addAccount();
 
         // Register referrer if .referrer is empty
-        if(referrerID > 0 && msg.value > minEtherAddReferrerCount) {
+        if(referrerID > 0 && msg.value >= minEtherAddReferrerCount) {
             if(!hasReferrer(msg.sender)) {
                 addReferrer(idToUser[referrerID]);
             } else {
