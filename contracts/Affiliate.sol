@@ -78,8 +78,8 @@ contract Affiliate is Ownable {
 
     decimals = 1000;
     referralBonus = 100;
-    levelRate.push(70);
-    levelRate.push(30);
+    levelRate.push(700);
+    levelRate.push(300);
     refereeBonusRateMap.push(RefereeBonusRate(1, decimals));
 
     // // Set default referee amount rate as 1ppl -> 100% if rate map is empty.
@@ -238,7 +238,7 @@ contract Affiliate is Ownable {
         break;
       }
 
-      if(onlyRewardActiveReferrers && parentAccount.lastActiveTimestamp + secondsUntilInactive >= getTime() || !onlyRewardActiveReferrers) {
+      if(onlyRewardActiveReferrers && parentAccount.lastActiveTimestamp + secondsUntilInactive >= getTime() && parentAccount.haveStakes || !onlyRewardActiveReferrers && parentAccount.haveStakes) {
         uint c = value * referralBonus / decimals;
         c = c * levelRate[i] / decimals;
         c = c * getRefereeBonusRate(parentAccount.referredCount) / decimals;
