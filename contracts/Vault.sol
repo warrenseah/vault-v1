@@ -128,7 +128,8 @@ contract Vault is Admin {
     function submitWithdrawal(uint stakeId) external onlyStatusAbove(1) {
         require(stakeId > 0, "stakeId cannot be 0");
         Stake storage staker = stakes[stakeId - 1];
-        require(checkUserStakeId(msg.sender, stakeId), "stakeId must belong to caller");
+        uint indexPlusOne = checkUserStakeId(msg.sender, stakeId);
+        require(indexPlusOne > 0, "stakeId must belong to caller");
         require(staker.tillTime == 0, "stakeId is already processed");
 
         staker.tillTime = block.timestamp;
@@ -163,7 +164,7 @@ contract Vault is Admin {
         emit PendingWithdrawal(nextWithdrawalID, stakeId - 1, msg.sender, amount);
         nextWithdrawalID += 1; // increment the nextWithdrawalID
 
-        addressToWithdrawalIds[msg.sender].push(withdrawals.length);
+        addressToWithdrawalIds[msg.sender].push(nextWithdrawalID);
 
         // burn the shares 
         require(staker.shares <= balanceOf[msg.sender], "Not enough stakedTokens");
@@ -181,7 +182,7 @@ contract Vault is Admin {
             // set affiliate.accounts[msg.sender].haveStakes
             changeUserHaveStakes();
         } else {
-            removeStakeIndexFromArray(stakeId);
+            removeStakeIndexFromArray(indexPlusOne);
             //update account timestamp lastActive
             updateActiveTimestamp(msg.sender);
         }
@@ -207,7 +208,7 @@ contract Vault is Admin {
         Yield memory yieldProgram = yields[yieldId - 1];
         Stake memory stake = stakes[stakeId - 1];
         require(!addressClaimedYieldRewards[msg.sender][yieldId][stakeId], "User must not claim rewards already"); 
-        require(checkUserStakeId(msg.sender, stakeId), "stakeId must belong to caller");
+        require(checkUserStakeId(msg.sender, stakeId) > 0, "stakeId must belong to caller");
         require(yieldProgram.tillTime > 0, "Yield program must have ended.");
         require(yieldProgram.sinceTime > stake.sinceTime, "User must have staked before start of yieldProgram");
         
@@ -299,12 +300,11 @@ contract Vault is Admin {
         return addressToWithdrawalIds[user];
     }
 
-    function checkUserStakeId(address user, uint stakeId) public view returns(bool isFound) {
+    function checkUserStakeId(address user, uint stakeId) public view returns(uint indexPlusOne) {
         uint[] memory stakeArr = addressToStakeIds[user];
-        isFound = false;
         for(uint i = 0; i < stakeArr.length; i++) {
             if(stakeArr[i] == stakeId) {
-                isFound = true;
+                indexPlusOne = i + 1;
                 break;
             }
         }
@@ -336,7 +336,7 @@ contract Vault is Admin {
         Yield memory yieldProgram = yields[yieldId - 1];
         Stake memory staker = stakes[stakeId - 1];
         require(yieldProgram.tillTime > 0, "Yield program must have ended");
-        require(checkUserStakeId(msg.sender, stakeId), "stakeId must belong to caller");
+        require(checkUserStakeId(msg.sender, stakeId) > 0, "stakeId must belong to caller");
         require(staker.tillTime == 0, "User must have tokens staked");
         require(yieldProgram.sinceTime > staker.sinceTime, "User must have staked before start of yieldProgram");
 
