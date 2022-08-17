@@ -191,13 +191,14 @@ contract Vault is Admin {
     function withdraw(uint id) external onlyStatusAbove(1) {
         require(id > 0, "withdrawId cannot be 0");
         Withdrawal storage staker = withdrawals[id - 1];
+        uint indexPlusOne = checkUserWithdrawalId(msg.sender, id);
         require(staker.sent == false, "Withdraw processed already");
-        require(checkUserWithdrawalId(msg.sender, id), "Withdrawal must submit withdrawal request");
+        require(indexPlusOne > 0, "Withdrawal must submit withdrawal request");
         require(block.timestamp > staker.end, "Timelock is active");
         require(staker.amountInTokens <= address(this).balance, "BNB balance not enough");
 
         staker.sent = true;
-        removeWithdrawalIndexFromArray(id);
+        removeWithdrawalIndexFromArray(indexPlusOne);
         (bool success, ) = payable(msg.sender).call{value: staker.amountInTokens}("");
         require(success, "BNB return failed");
         emit Withdrawn(msg.sender, id - 1);
@@ -310,12 +311,11 @@ contract Vault is Admin {
         }
     }
 
-    function checkUserWithdrawalId(address user, uint withdrawalId) public view returns(bool isFound) {
+    function checkUserWithdrawalId(address user, uint withdrawalId) public view returns(uint indexPlusOne) {
         uint[] memory withdrawalArr = addressToWithdrawalIds[user];
-        isFound = false;
         for(uint i = 0; i < withdrawalArr.length; i++) {
             if(withdrawalArr[i] == withdrawalId) {
-                isFound = true;
+                indexPlusOne = i + 1;
                 break;
             }
         }
