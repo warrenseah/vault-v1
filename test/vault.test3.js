@@ -349,7 +349,7 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
         await expect(vaultSign.withdrawProfits())
           .to.changeEtherBalance(vaultSign, "-60000000000000000")
           .to.emit(vault, "ProfitWithdraw")
-          .withArgs(feeType.Entry, bnbProfits, ethers.constants.AddressZero);
+          .withArgs(feeType.Entry, bnbProfits, ethers.constants.AddressZero, deployer.address);
       });
 
       it("should revert if profits is 0", async function () {
@@ -366,7 +366,7 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
             "29999999999999999970000"
           )
           .to.emit(vault, "ProfitWithdraw")
-          .withArgs(feeType.Farming, "29999999999999999970000", mockToken.address);
+          .withArgs(feeType.Farming, "29999999999999999970000", mockToken.address, deployer.address);
       });
     });
   });
