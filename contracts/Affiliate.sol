@@ -214,7 +214,6 @@ contract Affiliate is Ownable {
 
   function rmParentReferCount() internal {
     accounts[accounts[msg.sender].referrer].referredCount -= 1;
-    updateActiveTimestamp(msg.sender);
   }
 
   function changeUserHaveStakes() internal {
