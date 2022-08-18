@@ -28,6 +28,11 @@ module.exports = {
       }
     }
   },
+  networks: {
+    hardhat: {
+      chainId: 1337
+    }
+  },
   gasReporter: {
     enabled: false,
     currency: 'USD',
