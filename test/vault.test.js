@@ -69,7 +69,7 @@ describe("Vault Contract General Test", function () {
       nextAccountId: 1,
       minEtherAddReferrerCount: ethers.utils.parseUnits("3"),
       onlyRewardActiveReferrers: false,
-      levelRate: [70, 30],
+      levelRate: [700, 300],
       refereeBonusRateMap: [{lowerBound: 1, rate: 1000}]
     };
 
