@@ -3,10 +3,11 @@ pragma solidity ^0.8.0;
 
 import "./Admin.sol";
 
-contract Vault is Ownable, Admin {
+contract Vault is Admin {
     
     struct Stake {
         uint id;
+        uint accountId;
         address user;
         uint shares;
         uint amountInTokens;
@@ -51,7 +52,6 @@ contract Vault is Ownable, Admin {
     // Token to stakes records
     Yield[] public yields;
     mapping(address => mapping(uint => mapping(uint => bool))) public addressClaimedYieldRewards; // 1st uint yieldId 2nd stakeId
-    mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
     uint public nextYieldId = 0;
 
     Withdrawal[] public withdrawals;
@@ -66,12 +66,26 @@ contract Vault is Ownable, Admin {
     receive() external payable {}
 
     // Public functions
-    function deposit() external payable onlyStatusAbove(2) {
+    function deposit(uint referrerID) external payable onlyStatusAbove(2) {
         require(msg.value > 0, "Amount > 0");
         uint depositWithFee = amtWithFee(FeeType.Entry, msg.value);
 
         // register profit
         profits += feeToProtocol(FeeType.Entry, msg.value);
+
+        // Add account or update if have account
+        uint acctId = addAccount();
+
+        // Register referrer if .referrer is empty
+        if(referrerID > 0 && msg.value >= minEtherAddReferrerCount) {
+            if(!hasReferrer(msg.sender)) {
+                addReferrer(idToUser[referrerID]);
+            } else {
+                // have referrer already
+                address parent = accounts[msg.sender].referrer;
+                emit RegisteredRefererFailed(msg.sender, parent, "Address have been registered upline");
+            }
+        }
         
         /* Determine amount of shares to mint
         a = amount
@@ -92,6 +106,7 @@ contract Vault is Ownable, Admin {
 
         stakes.push(Stake({
             id: nextStakesId,
+            accountId: acctId,
             user: msg.sender,
             amountInTokens: depositWithFee,
             shares: shares,
@@ -113,7 +128,8 @@ contract Vault is Ownable, Admin {
     function submitWithdrawal(uint stakeId) external onlyStatusAbove(1) {
         require(stakeId > 0, "stakeId cannot be 0");
         Stake storage staker = stakes[stakeId - 1];
-        require(checkUserStakeId(msg.sender, stakeId), "stakeId must belong to caller");
+        uint indexPlusOne = checkUserStakeId(msg.sender, stakeId);
+        require(indexPlusOne > 0, "stakeId must belong to caller");
         require(staker.tillTime == 0, "stakeId is already processed");
 
         staker.tillTime = block.timestamp;
@@ -148,7 +164,7 @@ contract Vault is Ownable, Admin {
         emit PendingWithdrawal(nextWithdrawalID, stakeId - 1, msg.sender, amount);
         nextWithdrawalID += 1; // increment the nextWithdrawalID
 
-        addressToWithdrawalIds[msg.sender].push(withdrawals.length);
+        addressToWithdrawalIds[msg.sender].push(nextWithdrawalID);
 
         // burn the shares 
         require(staker.shares <= balanceOf[msg.sender], "Not enough stakedTokens");
@@ -157,21 +173,32 @@ contract Vault is Ownable, Admin {
          // If burning entire shares, remove from staker otherwise do nothing
         if(balanceOf[msg.sender] == 0) {
             delete addressToStakeIds[msg.sender];
+            
+            // remove parent.referredCount 
+            if(hasReferrer(msg.sender)) {
+                rmParentReferCount();
+            } 
+
+            // set affiliate.accounts[msg.sender].haveStakes
+            changeUserHaveStakes();
         } else {
-            removeStakeIndexFromArray(stakeId);
+            removeStakeIndexFromArray(indexPlusOne);
+            //update account timestamp lastActive
+            updateActiveTimestamp(msg.sender);
         }
     }
 
     function withdraw(uint id) external onlyStatusAbove(1) {
         require(id > 0, "withdrawId cannot be 0");
         Withdrawal storage staker = withdrawals[id - 1];
+        uint indexPlusOne = checkUserWithdrawalId(msg.sender, id);
         require(staker.sent == false, "Withdraw processed already");
-        require(checkUserWithdrawalId(msg.sender, id), "Withdrawal must submit withdrawal request");
+        require(indexPlusOne > 0, "Withdrawal must submit withdrawal request");
         require(block.timestamp > staker.end, "Timelock is active");
         require(staker.amountInTokens <= address(this).balance, "BNB balance not enough");
 
         staker.sent = true;
-        removeWithdrawalIndexFromArray(id);
+        removeWithdrawalIndexFromArray(indexPlusOne);
         (bool success, ) = payable(msg.sender).call{value: staker.amountInTokens}("");
         require(success, "BNB return failed");
         emit Withdrawn(msg.sender, id - 1);
@@ -182,7 +209,7 @@ contract Vault is Ownable, Admin {
         Yield memory yieldProgram = yields[yieldId - 1];
         Stake memory stake = stakes[stakeId - 1];
         require(!addressClaimedYieldRewards[msg.sender][yieldId][stakeId], "User must not claim rewards already"); 
-        require(checkUserStakeId(msg.sender, stakeId), "stakeId must belong to caller");
+        require(checkUserStakeId(msg.sender, stakeId) > 0, "stakeId must belong to caller");
         require(yieldProgram.tillTime > 0, "Yield program must have ended.");
         require(yieldProgram.sinceTime > stake.sinceTime, "User must have staked before start of yieldProgram");
         
@@ -191,15 +218,27 @@ contract Vault is Ownable, Admin {
         // Calculate rewards
         uint rewards = yieldProgram.yieldPerTokenStaked * stake.amountInTokens / PRECISION_FACTOR;
         uint rewardsAfterFee = amtWithFee(FeeType.Farming, rewards);
-        profitsInToken[yieldProgram.token] += feeToProtocol(FeeType.Farming, rewards);
 
-        require(rewardsAfterFee > 0 && rewardsAfterFee <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
-        bool success = IERC20(yieldProgram.token).transfer(msg.sender, rewardsAfterFee);
+        // Pay admin and referrers 2 levels
+        uint profits = feeToProtocol(FeeType.Farming, rewards);
+        if(hasReferrer(msg.sender)) {
+            uint referralPayout = payReferral(rewards, yieldProgram.token);
+            // Net will go to smartcontract
+            profitsInToken[yieldProgram.token] += profits - referralPayout;
+        } else {
+            profitsInToken[yieldProgram.token] += profits;
+            updateActiveTimestamp(msg.sender);
+        }
+
+        // Register user claimed tokens
+        uint tokenRewards = tokensOfUserBalance[yieldProgram.token][msg.sender];
+        tokenRewards += rewardsAfterFee; // withdraw yield with any referral comms
+        tokensOfUserBalance[yieldProgram.token][msg.sender] = 0; // set to 0 to reset token yield counter available for withdrawal
+
+        require(tokenRewards > 0 && tokenRewards <= IERC20(yieldProgram.token).balanceOf(address(this)), "Token insufficient to withdraw");
+        bool success = IERC20(yieldProgram.token).transfer(msg.sender, tokenRewards);
         require(success, "token transfer failed");
         emit ClaimedTokens(yieldProgram.id, stake.id, yieldProgram.token, msg.sender, rewardsAfterFee);
-        
-        // Register user claimed tokens
-        tokensOfUserBalance[yieldProgram.token][msg.sender] += rewardsAfterFee;
     }
 
     // Private functions
@@ -254,7 +293,7 @@ contract Vault is Ownable, Admin {
         return withdrawals.length;
     }
 
-    function addressToStakeArr(address user) external view returns(uint[] memory) {
+    function addressToStakeArr(address user) public view returns(uint[] memory) {
         return addressToStakeIds[user];
     }
     
@@ -262,23 +301,21 @@ contract Vault is Ownable, Admin {
         return addressToWithdrawalIds[user];
     }
 
-    function checkUserStakeId(address user, uint stakeId) public view returns(bool isFound) {
+    function checkUserStakeId(address user, uint stakeId) public view returns(uint indexPlusOne) {
         uint[] memory stakeArr = addressToStakeIds[user];
-        isFound = false;
         for(uint i = 0; i < stakeArr.length; i++) {
             if(stakeArr[i] == stakeId) {
-                isFound = true;
+                indexPlusOne = i + 1;
                 break;
             }
         }
     }
 
-    function checkUserWithdrawalId(address user, uint withdrawalId) public view returns(bool isFound) {
+    function checkUserWithdrawalId(address user, uint withdrawalId) public view returns(uint indexPlusOne) {
         uint[] memory withdrawalArr = addressToWithdrawalIds[user];
-        isFound = false;
         for(uint i = 0; i < withdrawalArr.length; i++) {
             if(withdrawalArr[i] == withdrawalId) {
-                isFound = true;
+                indexPlusOne = i + 1;
                 break;
             }
         }
@@ -299,7 +336,7 @@ contract Vault is Ownable, Admin {
         Yield memory yieldProgram = yields[yieldId - 1];
         Stake memory staker = stakes[stakeId - 1];
         require(yieldProgram.tillTime > 0, "Yield program must have ended");
-        require(checkUserStakeId(msg.sender, stakeId), "stakeId must belong to caller");
+        require(checkUserStakeId(msg.sender, stakeId) > 0, "stakeId must belong to caller");
         require(staker.tillTime == 0, "User must have tokens staked");
         require(yieldProgram.sinceTime > staker.sinceTime, "User must have staked before start of yieldProgram");
 

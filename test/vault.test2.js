@@ -2,7 +2,6 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const {
   loadFixture,
-  mine,
   time,
 } = require("@nomicfoundation/hardhat-network-helpers");
 
@@ -10,6 +9,18 @@ describe("Vault Deposit/Withdrawal Test", function () {
   let vault, mockToken, MockToken;
   let deployer, wallet1, wallet2, wallet3;
   let vaultSign, vaultWallet1, vaultWallet2, vaultWallet3;
+
+  const statusType = {
+    Inactive: 0,
+    DepositInactive: 1,
+    Active: 2
+  };
+
+  const feeType = {
+    Entry: 0,
+    Farming: 1,
+    Referral: 2
+};
 
   async function deployContractsFixture() {
     MockToken = await ethers.getContractFactory("MockToken");
@@ -30,8 +41,8 @@ describe("Vault Deposit/Withdrawal Test", function () {
 
   describe("Deposit and Withdrawal", function () {
     const deposit1 = ethers.utils.parseUnits("1");
-    const depositWithFee = ethers.utils.parseUnits("0.95"); // less 5% for entryFee
-    const profitsBNB = ethers.utils.parseUnits("0.05"); // profit to smartcontract
+    const depositWithFee = ethers.utils.parseUnits("0.99"); // less 1% for entryFee
+    const profitsBNB = ethers.utils.parseUnits("0.01"); // profit to smartcontract
 
     describe("Deposits", async function () {
       it("should revert when contractStatus is 0", async function () {
@@ -42,33 +53,32 @@ describe("Vault Deposit/Withdrawal Test", function () {
           "contractStatus is not default setting"
         );
         await expect(
-          vaultWallet1.deposit({ value: deposit1 })
+          vaultWallet1.deposit(0, { value: deposit1 })
         ).to.be.revertedWith("Not valid activity");
       });
 
       it("should revert when contractStatus is 1", async function () {
-        await vaultSign.changeStatus(1);
+        await vaultSign.changeStatus(statusType.DepositInactive);
         expect(await vault.contractStatus()).to.equal(
           1,
           "contractStatus is not set to 1"
         );
         await expect(
-          vaultWallet1.deposit({ value: deposit1 })
+          vaultWallet1.deposit(0, { value: deposit1 })
         ).to.be.revertedWith("Not valid activity");
       });
 
       it("should deposit and update all state variables", async function () {
         // Happy pass deposit will be success when contractStatus is 2
-        await vaultSign.changeStatus(2);
+        await vaultSign.changeStatus(statusType.Active);
         expect(await vault.contractStatus()).to.equal(
           2,
           "contractStatus is not set to 2"
         );
-
-        expect(await vault.profits()).to.equal(0, "profits should be 0");
-        await expect(vaultWallet1.deposit({ value: deposit1 }))
+        await expect(vaultWallet1.deposit(0, { value: deposit1 }))
           .to.emit(vault, "Deposit")
           .withArgs(wallet1.address, 0, depositWithFee);
+
         // check if smartcontract register entryFee profit
         expect(await vault.profits()).to.equal(
           profitsBNB,
@@ -97,6 +107,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
 
         const staker = await vault.stakes(0);
         expect(staker.id).to.equal(0, "stake index must be 0");
+        expect(staker.accountId).to.equal(1, "accountId is not incrementing");
         expect(staker.user).to.equal(wallet1.address, "staker is not wallet1");
         expect(staker.shares).to.equal(
           depositWithFee,
@@ -115,7 +126,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
         expect(stakerArray).to.eql([ethers.BigNumber.from("1")]); // need to subtract 1 to get the true stakeId
 
         await expect(
-          vaultWallet2.deposit({ value: deposit1 })
+          vaultWallet2.deposit(0, { value: deposit1 })
         ).to.changeEtherBalance(wallet2, "-1000000000000000000");
         expect(await vault.stakeOf(wallet2.address)).to.equal(
           depositWithFee,
@@ -124,6 +135,10 @@ describe("Vault Deposit/Withdrawal Test", function () {
         expect(await vault.nextStakesId()).to.equal(
           2,
           "nextStakesId should increment 1"
+        );
+        expect(await vault.nextAccountId()).to.equal(
+          3,  
+          "nextAccountId should increment 1"
         );
         expect(await vault.profits()).to.equal(
           profitsBNB.mul("2"),
@@ -140,7 +155,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
       });
 
       it("should revert when contractStatus is 0", async function () {
-        await vaultSign.changeStatus(0);
+        await vaultSign.changeStatus(statusType.Inactive);
         await expect(
           vaultWallet1.submitWithdrawal(wallet1Shares)
         ).to.be.revertedWith("Not valid activity");
@@ -148,7 +163,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
 
       it("should revert when submitted by a user not found in stakes array", async function () {
         // Unhappy pass submitWithdrawal by a non staker
-        await vaultSign.changeStatus(1);
+        await vaultSign.changeStatus(statusType.DepositInactive);
         await expect(vaultWallet3.submitWithdrawal(1)).to.be.revertedWith(
           "stakeId must belong to caller"
         );
@@ -156,7 +171,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
 
       it("should revert when submitted by a non user on a invalid stakeId", async function () {
         // Unhappy pass submitWithdrawal by a non staker
-        await vaultSign.changeStatus(1);
+        await vaultSign.changeStatus(statusType.DepositInactive);
         await expect(vaultWallet3.submitWithdrawal(5)).to.be.reverted;
       });
 
@@ -184,11 +199,11 @@ describe("Vault Deposit/Withdrawal Test", function () {
           "Staked balance is not zero"
         );
         expect(await vault.totalSupply()).to.equal(
-          ethers.BigNumber.from("950000000000000000"),
+          ethers.BigNumber.from("990000000000000000"),
           "totalSupply is not reduced upon withdrawal"
         );
         expect(await vault.totalStakes()).to.equal(
-          ethers.BigNumber.from("950000000000000000"),
+          ethers.BigNumber.from("990000000000000000"),
           "totalStakes is not reduced upon withdrawal"
         );
         expect(await vault.ifStakerExists(wallet1.address)).to.be.false;
@@ -264,7 +279,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
 
       it("should revert when contractStatus is 0", async function () {
         // Unhappy pass withdrawal will fail when contractStatus is 0
-        await vaultSign.changeStatus(0);
+        await vaultSign.changeStatus(statusType.Inactive);
         await expect(vaultWallet1.withdraw(withdrawalId)).to.be.revertedWith(
           "Not valid activity"
         );
@@ -272,7 +287,7 @@ describe("Vault Deposit/Withdrawal Test", function () {
 
       it("should revert when withdrawalId does not belong to user", async function () {
         // Unhappy pass withdrawal user is not msg.sender
-        await vaultSign.changeStatus(1);
+        await vaultSign.changeStatus(statusType.DepositInactive);
         await expect(vaultWallet2.withdraw(withdrawalId)).to.be.revertedWith(
           "Withdrawal must submit withdrawal request"
         );
@@ -339,13 +354,13 @@ describe("Vault Deposit/Withdrawal Test", function () {
 
       it("should withdraw when contractStatus is 2", async function () {
         // Happy pass withdrawal to process when contractStatus is 2
-        await vaultSign.changeStatus(2);
+        await vaultSign.changeStatus(statusType.Active);
         await vaultWallet2.submitWithdrawal(2);
 
         await time.increase(3600);
         await expect(vaultWallet2.withdraw(2)).to.changeEtherBalance(
           wallet2,
-          ethers.BigNumber.from("950000000000000000")
+          ethers.BigNumber.from("990000000000000000")
         );
       });
     });

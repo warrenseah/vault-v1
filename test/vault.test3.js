@@ -2,7 +2,6 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const {
   loadFixture,
-  mine,
   time,
 } = require("@nomicfoundation/hardhat-network-helpers");
 
@@ -10,6 +9,18 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
   let vault, mockToken, MockToken, mockTokenSign;
   let deployer, wallet1, wallet2, wallet3;
   let vaultSign, vaultWallet1, vaultWallet2, vaultWallet3;
+
+  const statusType = {
+    Inactive: 0,
+    DepositInactive: 1,
+    Active: 2
+  };
+
+  const feeType = {
+    Entry: 0,
+    Farming: 1,
+    Referral: 2
+};
 
   async function deployContractsFixture() {
     MockToken = await ethers.getContractFactory("MockToken");
@@ -33,17 +44,17 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
 
     before(async function () {
       await loadFixture(deployContractsFixture); // refresh states back to initial
-      await vaultSign.changeStatus(2);
+      await vaultSign.changeStatus(statusType.Active);
       yieldTokenAmt = await mockToken.balanceOf(deployer.address);
 
       const deposit1 = ethers.utils.parseUnits("1");
-      const deposit1WithFee = await vault.amtWithFee(0, deposit1);
+      const deposit1WithFee = await vault.amtWithFee(feeType.Entry, deposit1);
 
       const deposit2 = ethers.utils.parseUnits("4");
-      const deposit2WithFee = await vault.amtWithFee(0, deposit2);
+      const deposit2WithFee = await vault.amtWithFee(feeType.Entry, deposit2);
 
-      await vaultWallet1.deposit({ value: deposit1 });
-      await vaultWallet2.deposit({ value: deposit2 });
+      await vaultWallet1.deposit(0, { value: deposit1 });
+      await vaultWallet2.deposit(0, { value: deposit2 });
 
       expect(yieldTokenAmt).to.equal(ethers.utils.parseUnits("100000"));
 
@@ -279,11 +290,12 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
 
         expect(await vault.addressClaimedYieldRewards(wallet1.address, 1, 1)).to
           .be.true;
+
         expect(
           await vault.tokensOfUserBalance(mockToken.address, wallet1.address)
         ).to.equal(
-          afterFee,
-          "Claim token amount not reflected on tokensOfUserBalance"
+          0,
+          "Yield token for user was not set to 0"
         );
 
         // check admin profits
@@ -295,7 +307,7 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
         await expect(vaultWallet2.claimYieldTokens(2, 1)).to.changeTokenBalance(
           mockToken,
           wallet2,
-          "63999999999999998720000"
+          "55999999999999999944000"
         );
       });
 
@@ -307,7 +319,7 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
 
       it("should revert when user deposit after the start of yield programme", async function () {
         // new user deposit
-        await vaultWallet3.deposit({ value: ethers.utils.parseUnits("1") });
+        await vaultWallet3.deposit(0, { value: ethers.utils.parseUnits("1") });
         await expect(vaultWallet3.claimYieldTokens(3, 1)).to.be.revertedWith(
           "User must have staked before start of yieldProgram"
         );
@@ -333,11 +345,11 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
 
     describe("admin claim profits", function () {
       it("should send bnb to owner", async function () {
-        const bnbProfits = ethers.utils.parseUnits("0.3");
+        const bnbProfits = ethers.utils.parseUnits("0.06"); // 6bnb deposit from 3 depositors
         await expect(vaultSign.withdrawProfits())
-          .to.changeEtherBalance(vaultSign, "-300000000000000000")
+          .to.changeEtherBalance(vaultSign, "-60000000000000000")
           .to.emit(vault, "ProfitWithdraw")
-          .withArgs(0, bnbProfits, ethers.constants.AddressZero);
+          .withArgs(feeType.Entry, bnbProfits, ethers.constants.AddressZero, deployer.address);
       });
 
       it("should revert if profits is 0", async function () {
@@ -351,10 +363,10 @@ describe("Vault Add/Amend/Claim Yield Test", function () {
           .to.changeTokenBalance(
             mockToken,
             deployer.address,
-            "19999999999999999600000"
+            "29999999999999999970000"
           )
           .to.emit(vault, "ProfitWithdraw")
-          .withArgs(1, "19999999999999999600000", mockToken.address);
+          .withArgs(feeType.Farming, "29999999999999999970000", mockToken.address, deployer.address);
       });
     });
   });

@@ -2,32 +2,35 @@
 pragma solidity ^0.8.0;
 
 import "./Ownable.sol";
+import "./IERC20.sol";
 
-contract Referral is Ownable {
+contract Affiliate is Ownable {
 
   /**
    * @dev Max referral level depth
    */
-  uint8 constant MAX_REFER_DEPTH = 3;
+  uint8 constant MAX_REFER_DEPTH = 2;
 
   /**
    * @dev Max referee amount to bonus rate depth
    */
-  uint8 constant MAX_REFEREE_BONUS_LEVEL = 3;
+  uint8 constant MAX_REFEREE_BONUS_LEVEL = 2;
 
 
   /**
    * @dev The struct of account information
+   * @id AccountId to be specify into Stake struct
    * @param referrer The referrer addresss
    * @param reward The total referral reward of an address
    * @param referredCount The total referral amount of an address
    * @param lastActiveTimestamp The last active timestamp of an address
    */
   struct Account {
-    address payable referrer;
-    uint reward;
+    uint id;
+    address referrer;
     uint referredCount;
     uint lastActiveTimestamp;
+    bool haveStakes;
   }
 
   /**
@@ -40,72 +43,61 @@ contract Referral is Ownable {
     uint rate;
   }
 
-  event RegisteredReferer(address referee, address referrer);
-  event RegisteredRefererFailed(address referee, address referrer, string reason);
-  event PaidReferral(address from, address to, uint amount, uint level);
-  event UpdatedUserLastActiveTime(address user, uint timestamp);
+  event RegisteredReferer(address indexed referee, address indexed referrer);
+  event RegisteredRefererFailed(address indexed referee, address indexed referrer, string reason);
+  event PaidReferral(address indexed from, address indexed to, uint amount, uint level, address indexed token);
+  event UpdatedUserLastActiveTime(address indexed user, uint timestamp);
 
   mapping(address => Account) public accounts;
+  mapping(uint => address) public idToUser;
+  mapping(address => mapping(address => uint)) public tokensOfUserBalance; // first address is tokenAddress, 2nd is stakedUser address
 
-  uint256[] levelRate;
-  uint256 referralBonus;
-  uint256 decimals;
-  uint256 secondsUntilInactive;
-  bool onlyRewardActiveReferrers;
-  RefereeBonusRate[] refereeBonusRateMap;
+  uint256[] public levelRate;
+  RefereeBonusRate[] public refereeBonusRateMap;
 
-  /**
-   * @param _decimals The base decimals for float calc, for example 1000
-   * @param _referralBonus The total referral bonus rate, which will divide by decimals. For example, If you will like to set as 5%, it can set as 50 when decimals is 1000.
-   * @param _secondsUntilInactive The seconds that a user does not update will be seen as inactive.
-   * @param _onlyRewardActiveReferrers The flag to enable not paying to inactive uplines.
-   * @param _levelRate The bonus rate for each level, which will divide by decimals too. The max depth is MAX_REFER_DEPTH.
-   * @param _refereeBonusRateMap The bonus rate mapping to each referree amount, which will divide by decimals too. The max depth is MAX_REFER_DEPTH.
-   * The map should be pass as [<lower amount>, <rate>, ....]. For example, you should pass [1, 250, 5, 500, 10, 1000] when decimals is 1000 for the following case.
-   *
-   *  25%     50%     100%
-   *   | ----- | ----- |----->
-   *  1ppl    5ppl    10ppl
-   *
-   * @notice refereeBonusRateMap's lower amount should be ascending
-   */
+  uint256 public referralBonus;
+  uint256 public decimals;
+  uint256 public secondsUntilInactive = 1 days;
+  uint256 public nextAccountId = 1;
+  uint256 public minEtherAddReferrerCount = 3 ether; // set to 1000 usd
+  bool public onlyRewardActiveReferrers;
+  
+
   constructor(
-    uint _decimals,
-    uint _referralBonus,
-    uint _secondsUntilInactive,
-    bool _onlyRewardActiveReferrers,
-    uint256[] memory _levelRate,
-    uint256[] memory _refereeBonusRateMap
+    // uint _decimals,
+    // uint _referralBonus,
+    // uint[] memory _levelRate,
+    // uint[] memory _refereeBonusRateMap
   ) {
-    require(_levelRate.length > 0, "Referral level should be at least one");
-    require(_levelRate.length <= MAX_REFER_DEPTH, "Exceeded max referral level depth");
-    require(_refereeBonusRateMap.length % 2 == 0, "Referee Bonus Rate Map should be pass as [<lower amount>, <rate>, ....]");
-    require(_refereeBonusRateMap.length / 2 <= MAX_REFEREE_BONUS_LEVEL, "Exceeded max referree bonus level depth");
-    require(_referralBonus <= _decimals, "Referral bonus exceeds 100%");
-    require(sum(_levelRate) <= _decimals, "Total level rate exceeds 100%");
+    // require(_levelRate.length > 0, "Referral level should be at least one");
+    // require(_levelRate.length <= MAX_REFER_DEPTH, "Exceeded max referral level depth");
+    // require(_refereeBonusRateMap.length % 2 == 0, "Referee Bonus Rate Map should be pass as [<lower amount>, <rate>, ....]");
+    // require(_refereeBonusRateMap.length / 2 <= MAX_REFEREE_BONUS_LEVEL, "Exceeded max referree bonus level depth");
+    // require(_referralBonus <= _decimals, "Referral bonus exceeds 100%");
+    // require(sum(_levelRate) <= _decimals, "Total level rate exceeds 100%");
 
-    decimals = _decimals;
-    referralBonus = _referralBonus;
-    secondsUntilInactive = _secondsUntilInactive;
-    onlyRewardActiveReferrers = _onlyRewardActiveReferrers;
-    levelRate = _levelRate;
+    decimals = 1000;
+    referralBonus = 100;
+    levelRate.push(700);
+    levelRate.push(300);
+    refereeBonusRateMap.push(RefereeBonusRate(1, decimals));
 
-    // Set default referee amount rate as 1ppl -> 100% if rate map is empty.
-    if (_refereeBonusRateMap.length == 0) {
-      refereeBonusRateMap.push(RefereeBonusRate(1, decimals));
-      return;
-    }
+    // // Set default referee amount rate as 1ppl -> 100% if rate map is empty.
+    // if (_refereeBonusRateMap.length == 0) {
+    //   refereeBonusRateMap.push(RefereeBonusRate(1, decimals));
+    //   return;
+    // }
 
-    for (uint i; i < _refereeBonusRateMap.length; i += 2) {
-      if (_refereeBonusRateMap[i+1] > decimals) {
-        revert("One of referee bonus rate exceeds 100%");
-      }
-      // Cause we can't pass struct or nested array without enabling experimental ABIEncoderV2, use array to simulate it
-      refereeBonusRateMap.push(RefereeBonusRate(_refereeBonusRateMap[i], _refereeBonusRateMap[i+1]));
-    }
+    // for (uint i; i < _refereeBonusRateMap.length; i += 2) {
+    //   if (_refereeBonusRateMap[i+1] > decimals) {
+    //     revert("One of referee bonus rate exceeds 100%");
+    //   }
+    //   // Cause we can't pass struct or nested array without enabling experimental ABIEncoderV2, use array to simulate it
+    //   refereeBonusRateMap.push(RefereeBonusRate(_refereeBonusRateMap[i], _refereeBonusRateMap[i+1]));
+    // }
   }
 
-  function sum(uint[] memory data) public pure returns (uint) {
+  function sum(uint[] memory data) internal pure returns (uint) {
     uint S;
     for(uint i;i < data.length;i++) {
       S += data[i];
@@ -125,14 +117,14 @@ contract Referral is Ownable {
    * @dev Get block timestamp with function for testing mock
    */
   function getTime() public view returns(uint256) {
-    return block.timestamp; // solium-disable-line security/no-block-members
+    return block.timestamp;
   }
 
   /**
    * @dev Given a user amount to calc in which rate period
    * @param amount The number of referrees
    */
-  function getRefereeBonusRate(uint256 amount) public view returns(uint256) {
+  function getRefereeBonusRate(uint256 amount) internal view returns(uint256) {
     uint rate = refereeBonusRateMap[0].rate;
     for(uint i = 1; i < refereeBonusRateMap.length; i++) {
       if (amount < refereeBonusRateMap[i].lowerBound) {
@@ -161,12 +153,38 @@ contract Referral is Ownable {
     return false;
   }
 
+    /**
+   * @dev Add an address as an account
+   * @return accountId whether accountId for stake struct
+   */
+  function addAccount() internal returns(uint accountId) {
+      if(accounts[msg.sender].id != 0) {
+          // account already registered and update lastActive
+          accounts[msg.sender].haveStakes = true;
+          updateActiveTimestamp(msg.sender);
+          return accounts[msg.sender].id;
+      } 
+
+      // create new account
+      accountId = nextAccountId;
+      accounts[msg.sender] = Account({
+        id: accountId,
+        referrer: payable(address(0)),
+        referredCount: 0,
+        lastActiveTimestamp: block.timestamp,
+        haveStakes: true
+      });
+      // add id to user address mapping
+      idToUser[accountId] = msg.sender;
+      nextAccountId += 1;
+  }
+
   /**
    * @dev Add an address as referrer
    * @param referrer The address would set as referrer of msg.sender
    * @return whether success to add upline
    */
-  function addReferrer(address payable referrer) internal returns(bool){
+  function addReferrer(address referrer) internal returns(bool){
     if (referrer == address(0)) {
       emit RegisteredRefererFailed(msg.sender, referrer, "Referrer cannot be 0x0 address");
       return false;
@@ -180,6 +198,11 @@ contract Referral is Ownable {
 
     Account storage userAccount = accounts[msg.sender];
     Account storage parentAccount = accounts[referrer];
+    // People who dont have account will not be able to be referrer
+    if(!parentAccount.haveStakes) {
+      emit RegisteredRefererFailed(msg.sender, referrer, "Referrer does not have stake");
+      return false;
+    }
 
     userAccount.referrer = referrer;
     userAccount.lastActiveTimestamp = getTime();
@@ -189,34 +212,41 @@ contract Referral is Ownable {
     return true;
   }
 
+  function rmParentReferCount() internal {
+    accounts[accounts[msg.sender].referrer].referredCount -= 1;
+  }
+
+  function changeUserHaveStakes() internal {
+    accounts[msg.sender].haveStakes = false;
+    updateActiveTimestamp(msg.sender);
+  }
+
   /**
    * @dev This will calc and pay referral to uplines instantly
    * @param value The number tokens will be calculated in referral process
    * @return the total referral bonus paid
    */
-  function payReferral(uint256 value) internal returns(uint256){
+  function payReferral(uint256 value, address tokenAddr) internal returns(uint256){
     Account memory userAccount = accounts[msg.sender];
     uint totalReferal;
 
     for (uint i; i < levelRate.length; i++) {
-      address payable parent = userAccount.referrer;
+      address parent = userAccount.referrer;
       Account storage parentAccount = accounts[userAccount.referrer];
 
       if (parent == address(0)) {
         break;
       }
 
-      if(onlyRewardActiveReferrers && parentAccount.lastActiveTimestamp + secondsUntilInactive >= getTime() || !onlyRewardActiveReferrers) {
+      if(onlyRewardActiveReferrers && parentAccount.lastActiveTimestamp + secondsUntilInactive >= getTime() && parentAccount.haveStakes || !onlyRewardActiveReferrers && parentAccount.haveStakes) {
         uint c = value * referralBonus / decimals;
         c = c * levelRate[i] / decimals;
         c = c * getRefereeBonusRate(parentAccount.referredCount) / decimals;
 
         totalReferal += c;
 
-        parentAccount.reward += c;
-        (bool success, ) = parent.call{ value: c }("");
-        require(success, "token sent failed");
-        emit PaidReferral(msg.sender, parent, c, i + 1);
+        tokensOfUserBalance[tokenAddr][parent] += c;
+        emit PaidReferral(msg.sender, parent, c, i + 1, tokenAddr);
       }
 
       userAccount = parentAccount;
@@ -236,11 +266,15 @@ contract Referral is Ownable {
     emit UpdatedUserLastActiveTime(user, timestamp);
   }
 
-  function setSecondsUntilInactive(uint _secondsUntilInactive) public onlyOwner {
+  function setSecondsUntilInactive(uint _secondsUntilInactive) external onlyOwner {
     secondsUntilInactive = _secondsUntilInactive;
   }
 
-  function setOnlyRewardAActiveReferrers(bool _onlyRewardActiveReferrers) public onlyOwner {
+  function setOnlyRewardAActiveReferrers(bool _onlyRewardActiveReferrers) external onlyOwner {
     onlyRewardActiveReferrers = _onlyRewardActiveReferrers;
+  }
+
+  function changeMinEtherAddCount(uint minAmount) external onlyOwner {
+        minEtherAddReferrerCount = minAmount;
   }
 }
