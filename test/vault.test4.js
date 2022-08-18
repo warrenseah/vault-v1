@@ -363,5 +363,43 @@ describe("Vault Affiliate Test", function () {
             // console.log(rewards);
             // console.log(adminProfits);
         });
+
+        it("should not pay any referral if parent is inactive", async function() {
+            await loadFixture(deployContractsFixture); // refresh states back to initial
+            await vaultWallet1.deposit(0, {value: ethers.utils.parseUnits("1")});
+            await vaultWallet2.deposit(1, {value: ethers.utils.parseUnits("3")});
+            await vaultWallet3.deposit(2, {value: ethers.utils.parseUnits("3")});
+
+            firstAccount = await vault.accounts(wallet1.address);
+            refereeAccount1 = await vault.accounts(wallet2.address);
+            refereeAccount2 = await vault.accounts(wallet3.address);
+
+            // admin set OnlyRewardAActiveReferrers to true
+            await vaultSign.setOnlyRewardAActiveReferrers(true);
+            expect(await vault.onlyRewardActiveReferrers()).to.be.true;
+
+            // Admin end yield
+            await time.increase(3600); // move time so that deposits can claim token yields later
+            await vaultSign.addYieldTokens(await time.latest(),await vault.totalStakes());
+            await time.increase(86400); // 1 day past
+            await vaultSign.amendYieldTokens(1, mockToken.address, yieldTokenAmt, 0, await time.latest());
+            await time.increase(3600);
+        
+            // refereeAccount 2 claimYieldTokens, directReferrer withdrawn will not get reward, second-level referrer will receive rewards 30%
+            const [totalRewards, netRewards] = await vaultWallet3.getClaimsFor(3,1);
+            const adminRewards = totalRewards.sub(netRewards);
+            await expect(vaultWallet3.claimYieldTokens(3,1))
+                .to.emit(vaultWallet3, "ClaimedTokens").withArgs(0,2,mockToken.address, wallet3.address, anyValue);
+            
+            expect(await vault.tokensOfUserBalance(mockToken.address, wallet2.address)).to.equal(0, "direct referrer should not have comms");
+            expect(await vault.tokensOfUserBalance(mockToken.address, wallet1.address)).to.equal(0, "second-level referrer should not have comms");
+
+            const rewards = await mockToken.balanceOf(wallet3.address); // 70%
+            const adminProfits = await vault.profitsInToken(mockToken.address); // 30%
+            expect(adminProfits).to.equal(adminRewards, "admin profitInTokens is not the same");
+
+            // console.log(rewards);
+            // console.log(adminProfits);
+        });
     });
 });
