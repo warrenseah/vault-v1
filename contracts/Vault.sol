@@ -254,23 +254,25 @@ contract Vault is Admin {
 
     function removeStakeIndexFromArray(uint index) private {
         // only has 1 stake or stakeId is the last index
-        if(addressToStakeIds[msg.sender].length == 1 || index == addressToStakeIds[msg.sender].length) {
-            addressToStakeIds[msg.sender].pop();
+        uint[] storage userStakeArr = addressToStakeIds[msg.sender];
+        if(userStakeArr.length == 1 || index == userStakeArr.length) {
+            userStakeArr.pop();
         } else {
-            uint lastIndex = addressToStakeIds[msg.sender].length - 1;
-            addressToStakeIds[msg.sender][index - 1] = addressToStakeIds[msg.sender][lastIndex]; // overwrite the position with a new value
-            addressToStakeIds[msg.sender].pop();
+            uint lastIndex = userStakeArr.length - 1;
+            userStakeArr[index - 1] = userStakeArr[lastIndex]; // overwrite the position with a new value
+            userStakeArr.pop();
         }
     }
 
     function removeWithdrawalIndexFromArray(uint index) private {
+        uint[] storage userWithdrawArr = addressToWithdrawalIds[msg.sender];
         // only has 1 stake or stakeId is the last index
-        if(addressToWithdrawalIds[msg.sender].length == 1 || index == addressToWithdrawalIds[msg.sender].length) {
-            addressToWithdrawalIds[msg.sender].pop();
+        if(userWithdrawArr.length == 1 || index == userWithdrawArr.length) {
+            userWithdrawArr.pop();
         } else {
-            uint lastIndex = addressToWithdrawalIds[msg.sender].length - 1;
-            addressToWithdrawalIds[msg.sender][index - 1] = addressToWithdrawalIds[msg.sender][lastIndex]; // overwrite the position with a new value
-            addressToWithdrawalIds[msg.sender].pop();
+            uint lastIndex = userWithdrawArr.length - 1;
+            userWithdrawArr[index - 1] = userWithdrawArr[lastIndex]; // overwrite the position with a new value
+            userWithdrawArr.pop();
         }
     }
 
