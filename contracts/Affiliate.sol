@@ -158,11 +158,12 @@ contract Affiliate is Ownable {
    * @return accountId whether accountId for stake struct
    */
   function addAccount() internal returns(uint accountId) {
-      if(accounts[msg.sender].id != 0) {
+      Account storage newAccount = accounts[msg.sender];
+      if(newAccount.id != 0) {
           // account already registered and update lastActive
-          accounts[msg.sender].haveStakes = true;
+          newAccount.haveStakes = true;
           updateActiveTimestamp(msg.sender);
-          return accounts[msg.sender].id;
+          return newAccount.id;
       } 
 
       // create new account
