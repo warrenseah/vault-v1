@@ -6,6 +6,11 @@
 const hre = require("hardhat");
 const { ethers } = hre;
 
+const MockTokenJson = require("../artifacts/contracts/MockToken.sol/MockToken.json");
+const VaultJson = require("../artifacts/contracts/Vault.sol/Vault.json");
+
+const fs = require('fs');
+
 async function main() {
   // We get the contract to deploy
 
@@ -42,6 +47,23 @@ async function main() {
   if(receipt && receipt.status) {
     console.log(`Approval txn is successful!`); // receipt status 1: success 0: reverted
   }
+  // Store this in a json file residing in client folder
+  const metaPath = './contractMeta.json'; // relative from root directory
+  const metaData = JSON.stringify({
+    mockTokenAddress: mockToken.address,
+    mockTokenAbi: MockTokenJson.abi,
+    vaultAddress: vault.address,
+    vaultAbi: VaultJson.abi
+  }, null, 2);
+
+  
+  try {
+    fs.writeFileSync(metaPath, metaData, 'utf8');
+    console.log('metaData successfully saved to disk');
+  } catch (error) {
+    console.log('An error has occurred, ', error);
+  }
+
 }
 
 // We recommend this pattern to be able to use async/await everywhere
