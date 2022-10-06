@@ -19,25 +19,29 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
  * @type import('hardhat/config').HardhatUserConfig
  */
 module.exports = {
+  networks: {
+    localhost: {
+      url: "http://127.0.0.1:8545",
+    },
+  },
   solidity: {
     version: "0.8.0",
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200
-      }
-    }
+        runs: 200,
+      },
+    },
   },
-  networks: {
-    hardhat: {
-      chainId: 1337
-    }
+  paths: {
+    artifacts: "./client/artifacts",
   },
   gasReporter: {
-    enabled: false,
-    currency: 'USD',
-    token: 'BNB',
-    gasPriceApi: 'https://api.bscscan.com/api?module=proxy&action=eth_gasPrice',
-    coinmarketcap: process.env.COINMARKETCAPAPI
-  }
+    enabled: true,
+    currency: "USD",
+    token: "BNB",
+    // gasPriceApi: "https://api.etherscan.io/api?module=proxy&action=eth_gasPrice",
+    gasPriceApi: "https://api.bscscan.com/api?module=proxy&action=eth_gasPrice",
+    coinmarketcap: process.env.COINMARKETCAPAPI,
+  },
 };

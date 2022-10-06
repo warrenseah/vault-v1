@@ -4,34 +4,44 @@
 // When running the script with `npx hardhat run <script>` you'll find the Hardhat
 // Runtime Environment's members available in the global scope.
 const hre = require("hardhat");
+const { ethers } = hre;
 
 async function main() {
-  // Hardhat always runs the compile task when running scripts with its command
-  // line interface.
-  //
-  // If this script is run directly using `node` you may want to call compile
-  // manually to make sure everything is compiled
-  // await hre.run('compile');
-
-  const [deployer] = await ethers.getSigners();
-  console.log("Deploying contracts with the account:", deployer.address);
-
   // We get the contract to deploy
-  const Vault = await hre.ethers.getContractFactory("Vault");
-  const vault = await Vault.deploy();
 
-  await vault.deployed();
-  console.log("Vault deployed to: ", vault.address);
-
-  const MockToken = await hre.ethers.getContractFactory("MockToken");
+  const MockToken = await ethers.getContractFactory("MockToken");
   const mockToken = await MockToken.deploy();
   await mockToken.deployed();
-  console.log("mockToken deployed to: ", mockToken.address);
+  console.log(`Mock Token deployed address: ${mockToken.address}`);
 
+  const [deployer] = await ethers.getSigners();
 
-  const txn = await mockToken.approve(vault.address, hre.ethers.utils.parseUnits("100000"));
+  const Vault = await ethers.getContractFactory("Vault");
+  const vault = await Vault.deploy();
+  await vault.deployed();
+  console.log(`Vault deployed address: ${vault.address}`);
+  console.log(`Deployer address: ${deployer.address}`);
+
+  const vaultSign = vault.connect(deployer);
+  //   const vaultWallet1 = vault.connect(wallet1);
+  //   const vaultWallet2 = vault.connect(wallet2);
+  //   const vaultWallet3 = vault.connect(wallet3);
+
+  const statusType = {
+    Inactive: 0,
+    DepositInactive: 1,
+    Active: 2,
+  };
+
+  await vaultSign.changeStatus(statusType.Active);
+  const txn = await mockToken.approve(
+    vault.address,
+    ethers.utils.parseUnits("100000")
+  );
   const receipt = await txn.wait();
-  console.log(receipt);
+  if(receipt && receipt.status) {
+    console.log(`Approval txn is successful!`); // receipt status 1: success 0: reverted
+  }
 }
 
 // We recommend this pattern to be able to use async/await everywhere

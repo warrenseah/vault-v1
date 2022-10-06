@@ -13,14 +13,14 @@ describe("Vault Contract General Test", function () {
   const statusType = {
     Inactive: 0,
     DepositInactive: 1,
-    Active: 2
+    Active: 2,
   };
 
   const feeType = {
     Entry: 0,
     Farming: 1,
-    Referral: 2
-};
+    Referral: 2,
+  };
 
   async function deployContractsFixture() {
     MockToken = await ethers.getContractFactory("MockToken");
@@ -56,7 +56,6 @@ describe("Vault Contract General Test", function () {
   });
 
   describe("Default Settings", function () {
-
     const defaultConfig = {
       contractStatus: statusType.Inactive, // Inactive, 1: DepositInactive, 2: Active
       duration: 60, // 1 min
@@ -70,7 +69,7 @@ describe("Vault Contract General Test", function () {
       minEtherAddReferrerCount: ethers.utils.parseUnits("3"),
       onlyRewardActiveReferrers: false,
       levelRate: [700, 300],
-      refereeBonusRateMap: [{lowerBound: 1, rate: 1000}]
+      refereeBonusRateMap: [{ lowerBound: 1, rate: 1000 }],
     };
 
     describe("Default Variable Values", function () {
@@ -82,7 +81,7 @@ describe("Vault Contract General Test", function () {
         );
       });
 
-      describe("Admin.sol and Vault.sol", function() {
+      describe("Admin.sol and Vault.sol", function () {
         it("should deploy with default settings", async function () {
           expect(await vault.contractStatus()).to.equal(
             defaultConfig.contractStatus,
@@ -133,24 +132,57 @@ describe("Vault Contract General Test", function () {
             "withdrawalLength is not the same"
           );
 
-          expect(await vault.profits()).to.equal(defaultConfig.profits, "profits is not set to 0");
+          expect(await vault.profits()).to.equal(
+            defaultConfig.profits,
+            "profits is not set to 0"
+          );
         });
       });
 
-      describe("Affiliate.sol", function() {
-        it("should deploy with default settings", async function() {
-          expect(await vault.decimals()).to.equal(defaultConfig.decimals, "Decimal is not set to default value");
-          expect(await vault.referralBonus()).to.equal(defaultConfig.referralBonus, "referralBonus is not set to default value");
-          expect(await vault.secondsUntilInactive()).to.equal(defaultConfig.secondsUntilInactive, "secondsUntilInactive is not set to default value");
-          expect(await vault.minEtherAddReferrerCount()).to.equal(defaultConfig.minEtherAddReferrerCount, "minEtherAddReferrerCount is not set to default value");
-          expect(await vault.onlyRewardActiveReferrers()).to.equal(defaultConfig.onlyRewardActiveReferrers, "onlyRewardActiveReferrers is not set to default value");
-          expect(await vault.nextAccountId()).to.equal(defaultConfig.nextAccountId, "nextAccountId is not set to default value");
-          expect(await vault.levelRate(0)).to.equal(defaultConfig.levelRate[0], "levelRate[0] is not set to default value");
-          expect(await vault.levelRate(1)).to.equal(defaultConfig.levelRate[1], "levelRate[1] is not set to default value");
-          
-          const bonusRate = await vault.refereeBonusRateMap(0);  
-          expect(bonusRate.lowerBound).to.equal(defaultConfig.refereeBonusRateMap[0].lowerBound, "refereeBonusRateMap[0].lowerBound is not set to default value");
-          expect(bonusRate.rate).to.equal(defaultConfig.refereeBonusRateMap[0].rate, "refereeBonusRateMap[0].rate is not set to default value");
+      describe("Affiliate.sol", function () {
+        it("should deploy with default settings", async function () {
+          expect(await vault.decimals()).to.equal(
+            defaultConfig.decimals,
+            "Decimal is not set to default value"
+          );
+          expect(await vault.referralBonus()).to.equal(
+            defaultConfig.referralBonus,
+            "referralBonus is not set to default value"
+          );
+          expect(await vault.secondsUntilInactive()).to.equal(
+            defaultConfig.secondsUntilInactive,
+            "secondsUntilInactive is not set to default value"
+          );
+          expect(await vault.minEtherAddReferrerCount()).to.equal(
+            defaultConfig.minEtherAddReferrerCount,
+            "minEtherAddReferrerCount is not set to default value"
+          );
+          expect(await vault.onlyRewardActiveReferrers()).to.equal(
+            defaultConfig.onlyRewardActiveReferrers,
+            "onlyRewardActiveReferrers is not set to default value"
+          );
+          expect(await vault.nextAccountId()).to.equal(
+            defaultConfig.nextAccountId,
+            "nextAccountId is not set to default value"
+          );
+          expect(await vault.levelRate(0)).to.equal(
+            defaultConfig.levelRate[0],
+            "levelRate[0] is not set to default value"
+          );
+          expect(await vault.levelRate(1)).to.equal(
+            defaultConfig.levelRate[1],
+            "levelRate[1] is not set to default value"
+          );
+
+          const bonusRate = await vault.refereeBonusRateMap(0);
+          expect(bonusRate.lowerBound).to.equal(
+            defaultConfig.refereeBonusRateMap[0].lowerBound,
+            "refereeBonusRateMap[0].lowerBound is not set to default value"
+          );
+          expect(bonusRate.rate).to.equal(
+            defaultConfig.refereeBonusRateMap[0].rate,
+            "refereeBonusRateMap[0].rate is not set to default value"
+          );
         });
       });
     });
@@ -165,22 +197,26 @@ describe("Vault Contract General Test", function () {
       duration: 120,
       minEtherAddReferrerCount: ethers.utils.parseUnits("1"),
       secondsUntilInactive: 10368000, // 4months in secs
-      onlyRewardActiveReferrers: true
+      onlyRewardActiveReferrers: true,
     };
 
-    describe("Admin/Vault.sol", function() {
+    describe("Admin/Vault.sol", function () {
       it("should revert if caller is not the deployer", async function () {
         // Unhappy pass non owner changeFee
-        await expect(vaultWallet1.changeFee(0, change.entryFee)).to.be.revertedWith(
-          "Ownable: caller is not the owner"
-        );
+        await expect(
+          vaultWallet1.changeFee(0, change.entryFee)
+        ).to.be.revertedWith("Ownable: caller is not the owner");
       });
-  
+
       it("should change entry/farming fee", async function () {
         // Happy pass. Fee should change
-        await expect(vaultSign.changeFee(0, change.entryFee)).to.emit(vault, "FeeChange").withArgs(0, change.entryFee); // change entryFee
-        await expect(vaultSign.changeFee(1, change.farmingFee)).to.emit(vault, "FeeChange").withArgs(1, change.farmingFee); // change farmingFee
-  
+        await expect(vaultSign.changeFee(0, change.entryFee))
+          .to.emit(vault, "FeeChange")
+          .withArgs(0, change.entryFee); // change entryFee
+        await expect(vaultSign.changeFee(1, change.farmingFee))
+          .to.emit(vault, "FeeChange")
+          .withArgs(1, change.farmingFee); // change farmingFee
+
         expect(await vault.entryFee()).to.equal(
           change.entryFee,
           "entryFee did not change"
@@ -190,18 +226,18 @@ describe("Vault Contract General Test", function () {
           "farmingFee did not change"
         );
       });
-  
+
       it("should change contractStatus", async function () {
         await expect(vaultSign.changeStatus(change.status))
           .to.emit(vault, "StatusChanged")
           .withArgs(change.status);
-  
+
         expect(await vault.contractStatus()).to.equal(
           change.status,
           "contractStatus did not change"
         );
       });
-  
+
       it("should change duration", async function () {
         await vaultSign.changeDuration(change.duration);
         expect(await vault.duration()).to.equal(
@@ -211,20 +247,31 @@ describe("Vault Contract General Test", function () {
       });
     });
 
-    describe("Affiliate.sol", function() {
-      it("should change onlyRewardActiveReferrers", async function() {
-        await vaultSign.setOnlyRewardAActiveReferrers(change.onlyRewardActiveReferrers);
-        expect(await vault.onlyRewardActiveReferrers()).to.equal(change.onlyRewardActiveReferrers, "onlyRewardActiveReferrers is not changed");
+    describe("Affiliate.sol", function () {
+      it("should change onlyRewardActiveReferrers", async function () {
+        await vaultSign.setOnlyRewardAActiveReferrers(
+          change.onlyRewardActiveReferrers
+        );
+        expect(await vault.onlyRewardActiveReferrers()).to.equal(
+          change.onlyRewardActiveReferrers,
+          "onlyRewardActiveReferrers is not changed"
+        );
       });
 
-      it("should change minEtherAddReferrerCount", async function() {
+      it("should change minEtherAddReferrerCount", async function () {
         await vaultSign.changeMinEtherAddCount(change.minEtherAddReferrerCount);
-        expect(await vault.minEtherAddReferrerCount()).to.equal(change.minEtherAddReferrerCount, "minEtherAddReferrerCount is not changed");
+        expect(await vault.minEtherAddReferrerCount()).to.equal(
+          change.minEtherAddReferrerCount,
+          "minEtherAddReferrerCount is not changed"
+        );
       });
 
-      it("should change secondsUntilInactive", async function() {
+      it("should change secondsUntilInactive", async function () {
         await vaultSign.setSecondsUntilInactive(change.secondsUntilInactive);
-        expect(await vault.secondsUntilInactive()).to.equal(change.secondsUntilInactive, "secondsUntilInactive is not changed");
+        expect(await vault.secondsUntilInactive()).to.equal(
+          change.secondsUntilInactive,
+          "secondsUntilInactive is not changed"
+        );
       });
     });
   });
