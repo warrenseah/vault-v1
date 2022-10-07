@@ -23,6 +23,9 @@ module.exports = {
     localhost: {
       url: "http://127.0.0.1:8545",
     },
+    hardhat: {
+      chainId: 1337,
+    }
   },
   solidity: {
     version: "0.8.0",
@@ -33,9 +36,9 @@ module.exports = {
       },
     },
   },
-  paths: {
-    artifacts: "./client/artifacts",
-  },
+  // paths: {
+  //   artifacts: "./client/artifacts",
+  // },
   gasReporter: {
     enabled: true,
     currency: "USD",
