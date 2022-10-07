@@ -48,7 +48,7 @@ async function main() {
     console.log(`Approval txn is successful!`); // receipt status 1: success 0: reverted
   }
   // Store this in a json file residing in client folder
-  const metaPath = './contractMeta.json'; // relative from root directory
+  const metaPath = './client/src/contractMeta.json'; // relative from root directory
   const metaData = JSON.stringify({
     mockTokenAddress: mockToken.address,
     mockTokenAbi: MockTokenJson.abi,
