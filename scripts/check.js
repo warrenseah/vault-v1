@@ -1,8 +1,8 @@
 const hre = require("hardhat");
 const { ethers } = hre;
 
-const MockToken = require("../client/artifacts/contracts/MockToken.sol/MockToken.json");
-const Vault = require("../client/artifacts/contracts/Vault.sol/Vault.json");
+const MockToken = require("../artifacts/contracts/MockToken.sol/MockToken.json");
+const Vault = require("../artifacts/contracts/Vault.sol/Vault.json");
 
 async function main() {
   const [deployer] = await ethers.getSigners();
