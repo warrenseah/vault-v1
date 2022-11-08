@@ -61,7 +61,7 @@ contract Admin is Affiliate {
         emit StatusChanged(statusType);
     }
 
-    function withdrawProfits() external onlyOwner {
+    function withdrawProfits() public onlyOwner {
         require(profits > 0, "Not enough gasToken to withdraw");
         uint withdrawAmt = profits;
         profits = 0;
@@ -101,6 +101,7 @@ contract Admin is Affiliate {
     }
 
     function withdrawBNBToOwner() external onlyOwner {
+        withdrawProfits();
         (bool success, ) = payable(owner()).call{ value: address(this).balance}("");
         require(success, "Return bnb failed");
     }
