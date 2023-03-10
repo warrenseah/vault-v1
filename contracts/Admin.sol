@@ -100,6 +100,7 @@ contract Admin is Affiliate {
         require(success, "token transfer failed");
     }
 
+    // Emergency withdrawal function, profits variable is not updated
     function withdrawBNBToOwner() external onlyOwner {
         (bool success, ) = payable(owner()).call{ value: address(this).balance}("");
         require(success, "Return bnb failed");
