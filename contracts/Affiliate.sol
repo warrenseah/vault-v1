@@ -77,9 +77,12 @@ contract Affiliate is Ownable {
     // require(sum(_levelRate) <= _decimals, "Total level rate exceeds 100%");
 
     decimals = 1000;
-    referralBonus = 100;
-    levelRate.push(700);
-    levelRate.push(300);
+
+    // The total referral bonus rate, which will divide by decimals. For example, If you will like to set as 5%, it can set as 50 when decimals is 1000.
+    referralBonus = 100; // 10%
+    
+    levelRate.push(700); // 7%
+    levelRate.push(300); // 3%
     refereeBonusRateMap.push(RefereeBonusRate(1, decimals));
 
     // // Set default referee amount rate as 1ppl -> 100% if rate map is empty.
