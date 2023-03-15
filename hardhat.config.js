@@ -31,13 +31,14 @@ module.exports = {
       url: "https://data-seed-prebsc-1-s1.binance.org:8545",
       chainId: 97,
       gasPrice: 10000000000,
-      accounts: [process.env.PRIVATEKEY]
+      accounts: [process.env.PRIVATEKEY_DEPLOYER],
+      timeout: 60000,
     },
     mainnet: {
       url: "https://bsc-dataseed.binance.org/",
       chainId: 56,
       gasPrice: 10000000000,
-      accounts: [process.env.PRIVATEKEY]
+      accounts: [process.env.PRIVATEKEY_DEPLOYER]
     },
   },
   solidity: {
