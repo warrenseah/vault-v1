@@ -9,18 +9,16 @@ Hardhat config file is preset with BNB chain testnet and mainnet configurations.
 ## Basic Setup
 
 Install all project dependencies with npm.
+
 `npm install`
 
-Prepare the .env environment variables found in the .env_example file. It requires the coinmarketcap api key for fetching of live prices for the hardhat-gas-reporter plugin. BscScan api key is also required for contract verification at bscScan. This project require 4 private wallet keys in order for testing code to run. Once all of these variables are specified, the file should be renamed to '.env'.
+Prepare the .env environment variables found in the .env_example file. It requires the coinmarketcap api key for fetching of live prices for the hardhat-gas-reporter plugin. BscScan api key is also required for contract verification at bscScan.
+
+This project require 4 private wallet keys in order for testing code to run. Once all of these variables are specified, the file should be renamed to '.env'.
 
 Get your CMC api key here [COINMARKETCAPAPI](https://coinmarketcap.com/api/)
 
 Get BscScan key [BSCSCANAPIKEY](https://bscscan.com/login)
-
-PRIVATEKEY_DEPLOYER=
-PRIVATEKEY_WALLET_1=
-PRIVATEKEY_WALLET_2=
-PRIVATEKEY_WALLET_3=
 
 Compile the smart contracts
 
@@ -33,6 +31,7 @@ Run test
 Start a local node and open another terminal to deploy smart contract to local blockchain
 
 `npx hardhat node`
+
 `npx hardhat run --network localhost scripts/deploy.js`
 
 Deploy smart contracts to bnb chain testnet
@@ -47,7 +46,7 @@ Verify smart contract
 
 `npx hardhat verify --network <network> DEPLOYED_CONTRACT_ADDRESS`
 
-## Smart Contract Files
+## Smart Contract
 
 ## Deposit
 
